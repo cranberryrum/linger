@@ -4,16 +4,14 @@ import SwiftUI
 final class SettingsWindowController: NSWindowController {
     private static let frameName = "SettingsWindow"
 
-    init(scheduler: BreakScheduler) {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
+    init(scheduler: BreakScheduler, debug: DebugActions) {
+        let hosting = NSHostingController(rootView: SettingsView(scheduler: scheduler, debug: debug))
+        hosting.sizingOptions = [.preferredContentSize]
+
+        let window = NSWindow(contentViewController: hosting)
+        window.styleMask = [.titled, .closable]
         window.title = "linger Settings"
         window.isReleasedWhenClosed = false
-        window.contentViewController = NSHostingController(rootView: SettingsView(scheduler: scheduler))
         if !window.setFrameUsingName(Self.frameName) {
             window.center()
         }

@@ -2,15 +2,20 @@ import SwiftUI
 
 struct SettingsView: View {
     let scheduler: BreakScheduler
+    let debug: DebugActions
 
     var body: some View {
         TabView {
             BreaksSettingsView(scheduler: scheduler)
                 .tabItem { Label("Breaks", systemImage: "eye") }
-            GeneralSettingsView()
+            MessagesSettingsView()
+                .tabItem { Label("Messages", systemImage: "text.quote") }
+            GeneralSettingsView(showOnboarding: debug.showOnboarding)
                 .tabItem { Label("General", systemImage: "gearshape") }
+            DebugSettingsView(scheduler: scheduler, actions: debug)
+                .tabItem { Label("Debug", systemImage: "ladybug") }
         }
-        .frame(width: 480, height: 360)
+        .frame(width: 480)
     }
 }
 
@@ -20,83 +25,44 @@ struct BreaksSettingsView: View {
     @Bindable var scheduler: BreakScheduler
     @AppStorage(DefaultsKey.skipDifficulty) private var skipDifficulty: SkipDifficulty = .balanced
     @AppStorage(DefaultsKey.soundOn) private var soundOn = true
+    @State private var preview = BreakPreviewController()
+    @State private var isPreviewing = false
 
-    @State private var customInterval: Bool
-    @State private var customDuration: Bool
-    @State private var messages: [String]
-
-    private static let intervalPresets = [15, 20, 30, 45, 60]
-    private static let durationPresets = [15, 20, 30, 45, 60]
-
-    init(scheduler: BreakScheduler) {
-        self.scheduler = scheduler
-        _customInterval = State(initialValue: !Self.intervalPresets.contains(Int(scheduler.workInterval) / 60))
-        _customDuration = State(initialValue: !Self.durationPresets.contains(Int(scheduler.breakDuration)))
-        _messages = State(initialValue: UserDefaults.standard.stringArray(forKey: DefaultsKey.messages) ?? BreakMessages.defaults)
-    }
+    private static let presets = [15, 20, 30, 45, 60]
 
     var body: some View {
         Form {
             Section {
-                PresetPicker(
-                    title: "Break every",
-                    presets: Self.intervalPresets,
-                    unit: "min",
-                    value: intervalMinutes,
-                    isCustom: $customInterval
-                )
-                if customInterval {
-                    Stepper("Custom interval: \(Int(scheduler.workInterval) / 60) min", value: intervalMinutes, in: 5...120)
-                }
-
-                PresetPicker(
-                    title: "Break lasts",
-                    presets: Self.durationPresets,
-                    unit: "s",
-                    value: durationSeconds,
-                    isCustom: $customDuration
-                )
-                if customDuration {
-                    Stepper("Custom duration: \(Int(scheduler.breakDuration)) s", value: durationSeconds, in: 10...300, step: 5)
-                }
+                NowCard(scheduler: scheduler)
             }
 
             Section {
-                Picker("Skipping", selection: $skipDifficulty) {
-                    Text("Casual").tag(SkipDifficulty.casual)
-                    Text("Balanced").tag(SkipDifficulty.balanced)
-                    Text("Hardcore").tag(SkipDifficulty.hardcore)
+                PresetSlider(title: "Break every", unit: "min", range: 5...120, step: 1, presets: Self.presets, value: intervalMinutes)
+                PresetSlider(title: "Break lasts", unit: "s", range: 10...120, step: 5, presets: Self.presets, value: durationSeconds)
+            }
+
+            Section {
+                Picker("Skip breaks", selection: $skipDifficulty) {
+                    Text("Anytime").tag(SkipDifficulty.casual)
+                    Text("Hold to skip").tag(SkipDifficulty.balanced)
+                    Text("Never").tag(SkipDifficulty.hardcore)
                 }
                 .pickerStyle(.segmented)
-                Text(skipDescription)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
 
-            Section("Messages") {
-                ForEach(messages.indices, id: \.self) { index in
-                    HStack {
-                        TextField("Message", text: $messages[index])
-                        Button {
-                            messages.remove(at: index)
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(messages.count == 1)
+                HStack {
+                    Toggle("Play sounds", isOn: $soundOn)
+                    Button {
+                        Sounds.play(.breakEnd, ignoringPreference: true)
+                    } label: {
+                        Image(systemName: "speaker.wave.2")
                     }
+                    .buttonStyle(.borderless)
+                    .help("Hear the break-end tone")
                 }
-                Button("Add Message") {
-                    messages.append("")
-                }
-            }
-            .onChange(of: messages) { _, newValue in
-                UserDefaults.standard.set(newValue, forKey: DefaultsKey.messages)
-            }
 
-            Section {
-                Toggle("Play a sound when a break ends", isOn: $soundOn)
+                PreviewButton(isPreviewing: $isPreviewing, preview: preview)
+            } footer: {
+                Text("Soft tones ten seconds before a break, when it starts and ends, and when you skip one.")
             }
         }
         .formStyle(.grouped)
@@ -116,66 +82,120 @@ struct BreaksSettingsView: View {
         )
     }
 
-    private var skipDescription: String {
-        switch skipDifficulty {
-        case .casual: "You can skip a break at any time."
-        case .balanced: "Skip is disabled for the first 5 seconds of each break."
-        case .hardcore: "Breaks cannot be skipped."
+}
+
+private struct PreviewButton: View {
+    @Binding var isPreviewing: Bool
+    let preview: BreakPreviewController
+
+    var body: some View {
+        Button(isPreviewing ? "Previewing…" : "Preview a break") {
+            guard !isPreviewing else { return }
+            isPreviewing = true
+            preview.present(duration: 5) { isPreviewing = false }
         }
+        .disabled(isPreviewing)
     }
 }
 
-private struct PresetPicker: View {
-    let title: String
-    let presets: [Int]
-    let unit: String
-    @Binding var value: Int
-    @Binding var isCustom: Bool
+// MARK: - Messages
 
-    private enum Choice: Hashable {
-        case preset(Int)
-        case custom
-    }
+struct MessagesSettingsView: View {
+    @State private var messages = BreakMessages.all
+    @State private var selection: BreakMessage.ID?
+    @State private var preview = BreakPreviewController()
+    @State private var isPreviewing = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-            Picker(title, selection: selection) {
-                ForEach(presets, id: \.self) { preset in
-                    Text("\(preset) \(unit)").tag(Choice.preset(preset))
+        VStack(alignment: .leading, spacing: 10) {
+            Text("One message is shown per break, in this order.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            List(selection: $selection) {
+                ForEach($messages) { $message in
+                    VStack(alignment: .leading, spacing: 2) {
+                        TextField("Message", text: $message.title)
+                        TextField("Sub-line (optional)", text: $message.subline)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    .textFieldStyle(.plain)
+                    .padding(.vertical, 4)
+                    .tag(message.id)
                 }
-                Text("Custom").tag(Choice.custom)
+                .onMove { messages.move(fromOffsets: $0, toOffset: $1) }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .frame(height: 260)
+
+            HStack(spacing: 8) {
+                Button {
+                    let message = BreakMessage(title: "")
+                    withAnimation(Motion.easeOut(0.25)) { messages.append(message) }
+                    selection = message.id
+                } label: {
+                    Image(systemName: "plus")
+                }
+                Button {
+                    withAnimation(Motion.easeOut(0.25)) { messages.removeAll { $0.id == selection } }
+                    selection = nil
+                } label: {
+                    Image(systemName: "minus")
+                }
+                .disabled(selection == nil || messages.count == 1)
+
+                Spacer()
+
+                PreviewButton(isPreviewing: $isPreviewing, preview: preview)
+            }
         }
+        .padding(20)
+        .onChange(of: messages) { _, newValue in BreakMessages.save(newValue) }
+        .onDisappear { prune() }
     }
 
-    private var selection: Binding<Choice> {
-        Binding(
-            get: { isCustom ? .custom : .preset(value) },
-            set: { choice in
-                switch choice {
-                case .custom:
-                    isCustom = true
-                case .preset(let preset):
-                    isCustom = false
-                    value = preset
-                }
-            }
-        )
+    // Blank rows are dropped when the tab goes away, so what you see in the list is what plays.
+    private func prune() {
+        let kept = messages.filter { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard !kept.isEmpty, kept.count != messages.count else { return }
+        messages = kept
     }
 }
 
 // MARK: - General
 
 struct GeneralSettingsView: View {
-    @AppStorage(DefaultsKey.showCountdownInMenuBar) private var showCountdown = true
+    let showOnboarding: () -> Void
+    @AppStorage(DefaultsKey.menuBarCountdown) private var countdown: MenuBarCountdown = .minutes
 
     var body: some View {
         Form {
             Section {
-                Toggle("Show time to next break in the menu bar", isOn: $showCountdown)
+                LaunchAtLoginRow(model: PermissionsModel.shared)
+            }
+
+            Section {
+                Picker("Time to next break in the menu bar", selection: $countdown) {
+                    Text("Off").tag(MenuBarCountdown.off)
+                    Text("Minutes").tag(MenuBarCountdown.minutes)
+                    Text("Precise").tag(MenuBarCountdown.precise)
+                }
+            } footer: {
+                Text("Minutes shows “18m” and counts down in seconds only during the last minute.")
+            }
+
+            Section {
+                LabeledContent("Take a break now") {
+                    Text("⌃⌥⌘L")
+                        .monospaced()
+                        .foregroundStyle(.secondary)
+                }
+            } footer: {
+                Text("The shortcut is fixed in this version.")
+            }
+
+            Section {
+                Button("Show welcome again") { showOnboarding() }
             }
         }
         .formStyle(.grouped)

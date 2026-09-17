@@ -17,18 +17,26 @@ final class BreakScheduler {
     static let idleThreshold: TimeInterval = 180
     static let inputPauseThreshold: TimeInterval = 2
     static let inputPauseCap: TimeInterval = 60
-    static let postponeStep: TimeInterval = 5 * 60
     static let maxPostpones = 3
+    static let headsUpLead: TimeInterval = 60
+    static let finalCountdownLead: TimeInterval = 10
 
     private(set) var state: State = .working
     private(set) var nextBreakAt = Date()
     private(set) var remaining: TimeInterval = 0
     private(set) var postponeCount = 0
+    private(set) var postponedTotal: TimeInterval = 0
 
     var workInterval: TimeInterval {
         didSet {
             UserDefaults.standard.set(workInterval, forKey: DefaultsKey.workIntervalSec)
             recomputeNextBreak()
+            // A shorter interval must never blur the screen while the user is still in Settings;
+            // an overdue break gets the normal heads-up lead instead.
+            if nextBreakAt.timeIntervalSinceNow < Self.headsUpLead {
+                cycleStartedAt = Date().addingTimeInterval(Self.headsUpLead - scheduledLength)
+                recomputeNextBreak()
+            }
         }
     }
 
@@ -48,9 +56,15 @@ final class BreakScheduler {
         return false
     }
 
+    var isRunning: Bool { timer != nil }
+
     @ObservationIgnored var onBreakCompleted: (() -> Void)?
+    @ObservationIgnored var onHeadsUp: (() -> Void)?
+    @ObservationIgnored var onFinalCountdown: (() -> Void)?
 
     @ObservationIgnored private var cycleStartedAt = Date()
+    @ObservationIgnored private var headsUpFired = false
+    @ObservationIgnored private var finalCountdownFired = false
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var observers: [any NSObjectProtocol] = []
 
@@ -61,6 +75,7 @@ final class BreakScheduler {
     }
 
     func start() {
+        guard timer == nil else { return }
         restartInterval()
         observeSystemEvents()
 
@@ -78,12 +93,13 @@ final class BreakScheduler {
         beginBreak()
     }
 
-    func postpone() {
+    func postpone(by amount: TimeInterval) {
         guard canPostpone else { return }
         postponeCount += 1
+        postponedTotal += amount
         recomputeNextBreak()
         state = .working
-        log.debug("Postponed (\(self.postponeCount)/\(Self.maxPostpones)), next break at \(self.nextBreakAt)")
+        log.debug("Postponed \(Int(amount)) s (\(self.postponeCount)/\(Self.maxPostpones)), next break at \(self.nextBreakAt)")
     }
 
     func skipBreak() {
@@ -102,10 +118,20 @@ final class BreakScheduler {
         pause(until: until)
     }
 
+    func pauseIndefinitely() {
+        pause(until: .distantFuture)
+    }
+
     func resume() {
         guard isPaused else { return }
         log.debug("Resumed")
         restartInterval()
+    }
+
+    static func pauseDescription(until: Date) -> String {
+        if until == .distantFuture { return "Paused" }
+        let time = until.formatted(date: .omitted, time: .shortened)
+        return Calendar.current.isDateInToday(until) ? "Paused until \(time)" : "Paused until tomorrow, \(time)"
     }
 
     // MARK: Cycle
@@ -119,6 +145,7 @@ final class BreakScheduler {
     private func restartInterval() {
         cycleStartedAt = Date()
         postponeCount = 0
+        postponedTotal = 0
         recomputeNextBreak()
         state = .working
         log.debug("Interval restarted, next break at \(self.nextBreakAt)")
@@ -127,10 +154,12 @@ final class BreakScheduler {
     private func recomputeNextBreak() {
         nextBreakAt = cycleStartedAt.addingTimeInterval(scheduledLength)
         remaining = max(0, nextBreakAt.timeIntervalSinceNow)
+        headsUpFired = false
+        finalCountdownFired = false
     }
 
     private var scheduledLength: TimeInterval {
-        workInterval + Double(postponeCount) * Self.postponeStep
+        workInterval + postponedTotal
     }
 
     private func beginBreak() {
@@ -156,6 +185,7 @@ final class BreakScheduler {
                 // Being away counts as a break; keep the full interval ahead of the user.
                 cycleStartedAt = now
                 postponeCount = 0
+                postponedTotal = 0
                 recomputeNextBreak()
                 return
             }
@@ -165,6 +195,14 @@ final class BreakScheduler {
                 recomputeNextBreak()
             }
             remaining = max(0, nextBreakAt.timeIntervalSince(now))
+            if remaining <= Self.headsUpLead && remaining > 0 && !headsUpFired {
+                headsUpFired = true
+                onHeadsUp?()
+            }
+            if remaining <= Self.finalCountdownLead && remaining > 0 && !finalCountdownFired {
+                finalCountdownFired = true
+                onFinalCountdown?()
+            }
             if now >= nextBreakAt {
                 if secondsSinceLastInput < Self.inputPauseThreshold {
                     state = .waitingForInputPause(since: now)
@@ -192,8 +230,31 @@ final class BreakScheduler {
         }
     }
 
-    private var secondsSinceLastInput: TimeInterval {
+    var secondsSinceLastInput: TimeInterval {
         CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+    }
+
+    // MARK: Debug
+
+    // Moves the current cycle so the next break is `seconds` away, keeping postpones.
+    func debugSetRemaining(_ seconds: TimeInterval) {
+        switch state {
+        case .working, .waitingForInputPause, .paused, .suspended:
+            cycleStartedAt = Date().addingTimeInterval(seconds - scheduledLength)
+            recomputeNextBreak()
+            state = .working
+        case .onBreak:
+            return
+        }
+    }
+
+    // Runs the real sleep/wake path as if the Mac had been asleep for `gap` seconds.
+    func debugSimulateSleep(gap: TimeInterval) {
+        suspend()
+        if case .suspended(let remaining, _) = state {
+            state = .suspended(remaining: remaining, at: Date().addingTimeInterval(-gap))
+        }
+        resumeFromSuspension()
     }
 
     // MARK: Sleep, lock, screensaver

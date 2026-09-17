@@ -4,98 +4,179 @@ struct OnboardingView: View {
     @Bindable var scheduler: BreakScheduler
     let onFinish: () -> Void
 
-    private enum Step: Int {
+    private enum Step: Int, CaseIterable {
         case welcome, interval, breakLength, permissions
     }
 
+    private enum Direction {
+        case forward, back
+    }
+
     @State private var step: Step = .welcome
-    @State private var customInterval: Bool
-    @State private var previewController: BreakPreviewController?
+    @State private var direction: Direction = .forward
+    @State private var preview = BreakPreviewController()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let intervalPresets = [15, 20, 30, 45, 60]
     private static let durationPresets = [15, 20, 30, 45, 60]
 
-    init(scheduler: BreakScheduler, onFinish: @escaping () -> Void) {
-        self.scheduler = scheduler
-        self.onFinish = onFinish
-        _customInterval = State(initialValue: !Self.intervalPresets.contains(Int(scheduler.workInterval) / 60))
-    }
-
     var body: some View {
         VStack(spacing: 0) {
-            Spacer(minLength: 32)
-
-            Group {
-                switch step {
-                case .welcome:
-                    WelcomeStep()
-                case .interval:
-                    IntervalStep(scheduler: scheduler, customInterval: $customInterval, presets: Self.intervalPresets)
-                case .breakLength:
-                    BreakLengthStep(scheduler: scheduler, presets: Self.durationPresets, previewController: $previewController)
-                case .permissions:
-                    PermissionsStep()
-                }
+            ZStack {
+                stepContent
+                    .id(step)
+                    .transition(stepTransition)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 44)
+            .padding(.horizontal, 48)
+            .padding(.top, 36)
 
-            Spacer(minLength: 32)
-
-            buttons
-                .padding(.horizontal, 32)
-                .padding(.bottom, 24)
+            footer
+                .padding(.horizontal, 24)
+                .padding(.bottom, 20)
         }
-        .frame(width: 560, height: 460)
+        .frame(width: 560, height: 420)
     }
 
     @ViewBuilder
-    private var buttons: some View {
-        HStack {
-            if step != .welcome {
+    private var stepContent: some View {
+        switch step {
+        case .welcome:
+            WelcomeStep()
+        case .interval:
+            IntervalStep(scheduler: scheduler, presets: Self.intervalPresets)
+        case .breakLength:
+            BreakLengthStep(scheduler: scheduler, presets: Self.durationPresets, preview: preview)
+        case .permissions:
+            PermissionsStep()
+        }
+    }
+
+    private var footer: some View {
+        ZStack {
+            PageDots(count: Step.allCases.count, index: step.rawValue)
+
+            HStack {
                 Button("Back") { back() }
-            }
-            Spacer()
-            if step == .permissions {
-                Button("Finish") { finish() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-            } else {
-                Button("Continue") { forward() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
+                    .opacity(step == .welcome ? 0 : 1)
+                    .disabled(step == .welcome)
+                    .animation(Motion.easeOut(0.2), value: step)
+                Spacer()
+                Button(step == .permissions ? "Finish" : "Continue") {
+                    if step == .permissions { onFinish() } else { forward() }
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
             }
         }
+    }
+
+    // The incoming page slides in from the direction of travel; the outgoing page just
+    // fades so a direction change never makes the old page move the wrong way.
+    private var stepTransition: AnyTransition {
+        let shift: CGFloat = reduceMotion ? 0 : (direction == .forward ? 28 : -28)
+        return .asymmetric(
+            insertion: .modifier(active: PageShift(x: shift, visible: false), identity: PageShift(x: 0, visible: true))
+                .animation(Motion.easeOut(0.32)),
+            removal: .modifier(active: PageShift(x: 0, visible: false), identity: PageShift(x: 0, visible: true))
+                .animation(Motion.easeOut(0.16))
+        )
     }
 
     private func back() {
         guard let previous = Step(rawValue: step.rawValue - 1) else { return }
-        step = previous
+        direction = .back
+        withAnimation(Motion.easeOut(0.32)) { step = previous }
     }
 
     private func forward() {
         guard let next = Step(rawValue: step.rawValue + 1) else { return }
-        step = next
+        direction = .forward
+        withAnimation(Motion.easeOut(0.32)) { step = next }
+    }
+}
+
+private struct PageShift: ViewModifier {
+    let x: CGFloat
+    let visible: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .offset(x: x)
+            .opacity(visible ? 1 : 0)
+            .blur(radius: visible || reduceMotion ? 0 : 3)
+    }
+}
+
+private struct PageDots: View {
+    let count: Int
+    let index: Int
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ForEach(0..<count, id: \.self) { dot in
+                Capsule()
+                    .fill(dot == index ? Color.accentColor : Color.primary.opacity(0.15))
+                    .frame(width: dot == index ? 18 : 7, height: 7)
+            }
+        }
+        .animation(Motion.easeOut(0.3), value: index)
+    }
+}
+
+// MARK: - Shared page layout
+
+private struct StepPage<Controls: View>: View {
+    let symbol: String
+    let title: String
+    let text: String
+    var staggered = false
+    @ViewBuilder let controls: Controls
+
+    @State private var appeared = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(systemName: symbol)
+                .font(.system(size: 64))
+                .foregroundStyle(Color.accentColor)
+                .frame(height: 76)
+                .entrance(shown, delay: 0)
+            Text(title)
+                .font(.largeTitle.weight(.semibold))
+                .padding(.top, 16)
+                .entrance(shown, delay: 0.05)
+            Text(text)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+                .entrance(shown, delay: 0.1)
+            controls
+                .padding(.top, 24)
+                .entrance(shown, delay: 0.15)
+            Spacer(minLength: 0)
+        }
+        .onAppear { appeared = true }
     }
 
-    private func finish() {
-        UserDefaults.standard.set(true, forKey: DefaultsKey.hasCompletedOnboarding)
-        onFinish()
-    }
+    private var shown: Bool { staggered ? appeared : true }
 }
 
 // MARK: - Screen 1: Welcome
 
 private struct WelcomeStep: View {
     var body: some View {
-        VStack(spacing: 20) {
-            Image(nsImage: NSApp.applicationIconImage ?? NSImage())
-                .resizable()
-                .frame(width: 96, height: 96)
-            Text("linger blurs your screen at regular intervals so you remember to look far away.")
-                .font(.title3)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+        StepPage(
+            symbol: "eye",
+            title: "linger",
+            text: "linger blurs your screen at regular intervals so you remember to look far away.",
+            staggered: true
+        ) {
+            EmptyView()
         }
     }
 }
@@ -104,48 +185,13 @@ private struct WelcomeStep: View {
 
 private struct IntervalStep: View {
     @Bindable var scheduler: BreakScheduler
-    @Binding var customInterval: Bool
     let presets: [Int]
 
-    private enum Choice: Hashable {
-        case preset(Int)
-        case custom
-    }
-
     var body: some View {
-        VStack(spacing: 24) {
-            Text("How long do you want to work before each break?")
-                .font(.title3)
-                .multilineTextAlignment(.center)
-
-            Picker("", selection: selection) {
-                ForEach(presets, id: \.self) { preset in
-                    Text("\(preset) min").tag(Choice.preset(preset))
-                }
-                Text("Custom").tag(Choice.custom)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-
-            if customInterval {
-                Stepper("Custom interval: \(Int(scheduler.workInterval) / 60) min", value: intervalMinutes, in: 5...120)
-            }
+        StepPage(symbol: "timer", title: "Work interval", text: "How long do you want to work before each break?") {
+            PresetSlider(title: "Break every", unit: "min", range: 5...120, step: 1, presets: presets, value: intervalMinutes)
+                .frame(maxWidth: 360)
         }
-    }
-
-    private var selection: Binding<Choice> {
-        Binding(
-            get: { customInterval ? .custom : .preset(Int(scheduler.workInterval) / 60) },
-            set: { choice in
-                switch choice {
-                case .custom:
-                    customInterval = true
-                case .preset(let value):
-                    customInterval = false
-                    scheduler.workInterval = TimeInterval(value * 60)
-                }
-            }
-        )
     }
 
     private var intervalMinutes: Binding<Int> {
@@ -161,25 +207,18 @@ private struct IntervalStep: View {
 private struct BreakLengthStep: View {
     @Bindable var scheduler: BreakScheduler
     let presets: [Int]
-    @Binding var previewController: BreakPreviewController?
+    let preview: BreakPreviewController
     @State private var isPreviewing = false
 
     var body: some View {
-        VStack(spacing: 24) {
-            Text("How long should each break last?")
-                .font(.title3)
-                .multilineTextAlignment(.center)
+        StepPage(symbol: "hourglass", title: "Break length", text: "How long should each break last?") {
+            VStack(spacing: 16) {
+                PresetSlider(title: "Break lasts", unit: "s", range: 10...120, step: 5, presets: presets, value: duration)
+                    .frame(maxWidth: 360)
 
-            Picker("", selection: duration) {
-                ForEach(presets, id: \.self) { preset in
-                    Text("\(preset) s").tag(preset)
-                }
+                Button("See what a break looks like") { runPreview() }
+                    .disabled(isPreviewing)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-
-            Button("See what a break looks like") { preview() }
-                .disabled(isPreviewing)
         }
     }
 
@@ -190,85 +229,24 @@ private struct BreakLengthStep: View {
         )
     }
 
-    private func preview() {
+    private func runPreview() {
         guard !isPreviewing else { return }
         isPreviewing = true
-        let controller = BreakPreviewController()
-        previewController = controller
-        controller.present(duration: 5) {
-            isPreviewing = false
-            previewController = nil
-        }
+        preview.present(duration: 5) { isPreviewing = false }
     }
 }
 
 // MARK: - Screen 4: Permissions
 
 private struct PermissionsStep: View {
-    @AppStorage(DefaultsKey.headsUpOn) private var notificationsOn = false
-    @AppStorage(DefaultsKey.launchAtLoginOn) private var launchAtLoginOn = true
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Two optional settings")
-                    .font(.headline)
-                Text("linger can blur your screen without any special permissions. These two just make it more convenient.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            PermissionRow(
-                systemImage: "bell.badge",
-                title: "Heads-up before each break",
-                detail: "Get a small notification 60 seconds before the screen blurs, with a Postpone button. If you skip this, linger shows the heads-up in its own small panel.",
-                isOn: $notificationsOn,
-                status: notificationsOn ? "Allowed" : "Not enabled"
-            )
-
-            PermissionRow(
-                systemImage: "power",
-                title: "Start linger when I log in",
-                detail: "Runs quietly in the menu bar every time you start your Mac. macOS may show a \"Background Items Added\" notice, that is expected.",
-                isOn: $launchAtLoginOn,
-                status: launchAtLoginOn ? "Enabled" : "Needs approval — open Login Items"
-            )
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct PermissionRow: View {
-    let systemImage: String
-    let title: String
-    let detail: String
-    @Binding var isOn: Bool
-    let status: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.title2)
-                .frame(width: 28)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .fontWeight(.semibold)
-                Text(detail)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Text(status)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-
-            Spacer(minLength: 8)
-
-            Toggle("", isOn: $isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
+        StepPage(
+            symbol: "power",
+            title: "One optional setting",
+            text: "linger blurs your screen without any special permissions. This one just means you never have to remember to open it."
+        ) {
+            LaunchAtLoginRow(model: PermissionsModel.shared)
+                .frame(maxWidth: 460)
         }
     }
 }

@@ -15,19 +15,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let scheduler = BreakScheduler()
     private var statusItemController: StatusItemController?
     private var overlayController: BreakOverlayController?
+    private var headsUpController: HeadsUpPanelController?
+    private var cursorCountdown: CursorCountdownController?
     private var settingsWindowController: SettingsWindowController?
     private var onboardingWindowController: OnboardingWindowController?
     private var hotKey: GlobalHotKey?
-    private var chime: NSSound?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = makeMainMenu()
         statusItemController = StatusItemController(scheduler: scheduler) { [weak self] in self?.openSettings() }
         overlayController = BreakOverlayController(scheduler: scheduler)
+        headsUpController = HeadsUpPanelController(scheduler: scheduler)
+        cursorCountdown = CursorCountdownController(scheduler: scheduler)
+        scheduler.onHeadsUp = { [weak self] in self?.headsUpController?.show() }
+        scheduler.onFinalCountdown = { Sounds.play(.finalCountdown) }
         hotKey = GlobalHotKey(keyCode: kVK_ANSI_L, modifiers: controlKey | optionKey | cmdKey) { [scheduler] in
             scheduler.startBreakNow()
         }
-        scheduler.onBreakCompleted = { [weak self] in self?.playChime() }
+        scheduler.onBreakCompleted = { Sounds.play(.breakEnd) }
 
         if UserDefaults.standard.bool(forKey: DefaultsKey.hasCompletedOnboarding) {
             scheduler.start()
@@ -37,25 +42,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showOnboarding() {
+        if let onboardingWindowController {
+            onboardingWindowController.show()
+            return
+        }
+        // Re-running the welcome flow from Settings must not restart a timer that is already going.
+        let firstRun = !scheduler.isRunning
         onboardingWindowController = OnboardingWindowController(scheduler: scheduler) { [weak self] in
             self?.onboardingWindowController = nil
+            guard firstRun else { return }
             self?.scheduler.start()
+            self?.statusItemController?.showRunningHint()
         }
         onboardingWindowController?.show()
     }
 
     @objc private func openSettings() {
         if settingsWindowController == nil {
-            settingsWindowController = SettingsWindowController(scheduler: scheduler)
+            let debug = DebugActions(
+                showHeadsUp: { [weak self] in self?.headsUpController?.show() },
+                showRunningHint: { [weak self] in self?.statusItemController?.showRunningHint() },
+                showOnboarding: { [weak self] in self?.showOnboarding() }
+            )
+            settingsWindowController = SettingsWindowController(scheduler: scheduler, debug: debug)
         }
         settingsWindowController?.show()
-    }
-
-    private func playChime() {
-        guard UserDefaults.standard.bool(forKey: DefaultsKey.soundOn), let sound = NSSound(named: "Glass") else { return }
-        sound.volume = 0.25
-        chime = sound
-        sound.play()
     }
 
     // The menu bar itself is never shown (LSUIElement), but a main menu is what routes

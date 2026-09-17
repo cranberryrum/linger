@@ -5,14 +5,22 @@ enum SkipDifficulty: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    static let balancedDelay: TimeInterval = 5
+    static let holdDuration: TimeInterval = 1
 
-    func allowsSkip(elapsed: TimeInterval) -> Bool {
-        switch self {
-        case .casual: true
-        case .balanced: elapsed >= Self.balancedDelay
-        case .hardcore: false
-        }
+    static var current: SkipDifficulty {
+        SkipDifficulty(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.skipDifficulty) ?? "") ?? .balanced
+    }
+
+    var canSkip: Bool { self != .hardcore }
+}
+
+enum MenuBarCountdown: String, CaseIterable, Identifiable {
+    case off, minutes, precise
+
+    var id: String { rawValue }
+
+    static var current: MenuBarCountdown {
+        MenuBarCountdown(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.menuBarCountdown) ?? "") ?? .minutes
     }
 }
 
@@ -21,11 +29,13 @@ enum DefaultsKey {
     static let breakDurationSec = "breakDurationSec"
     static let skipDifficulty = "skipDifficulty"
     static let messages = "messages"
+    static let breakMessages = "breakMessages"
     static let soundOn = "soundOn"
-    static let showCountdownInMenuBar = "showCountdownInMenuBar"
-    static let headsUpOn = "headsUpOn"
+    static let menuBarCountdown = "menuBarCountdown"
     static let launchAtLoginOn = "launchAtLoginOn"
     static let hasCompletedOnboarding = "hasCompletedOnboarding"
+
+    private static let legacyShowCountdownInMenuBar = "showCountdownInMenuBar"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -34,12 +44,26 @@ enum DefaultsKey {
             skipDifficulty: SkipDifficulty.balanced.rawValue,
             messages: BreakMessages.defaults,
             soundOn: true,
-            showCountdownInMenuBar: true,
-            headsUpOn: false,
+            menuBarCountdown: MenuBarCountdown.minutes.rawValue,
             launchAtLoginOn: true,
             hasCompletedOnboarding: false,
         ])
+        migrate()
     }
+
+    private static func migrate() {
+        let defaults = UserDefaults.standard
+        if let legacy = defaults.object(forKey: legacyShowCountdownInMenuBar) as? Bool {
+            defaults.set((legacy ? MenuBarCountdown.precise : .off).rawValue, forKey: menuBarCountdown)
+            defaults.removeObject(forKey: legacyShowCountdownInMenuBar)
+        }
+    }
+}
+
+struct BreakMessage: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var title: String
+    var subline = ""
 }
 
 enum BreakMessages {
@@ -51,7 +75,7 @@ enum BreakMessages {
         "Blink slowly a few times",
     ]
 
-    private static let sublines = [
+    private static let defaultSublines = [
         "Look far away": "Find the farthest thing you can see",
         "Look out the window": "Let your eyes settle on something distant",
         "Take a sip of water": "Then look up from the screen for a moment",
@@ -59,13 +83,32 @@ enum BreakMessages {
         "Blink slowly a few times": "Give your eyes a moment to rest",
     ]
 
-    static func subline(for message: String) -> String {
-        sublines[message] ?? "Let your eyes rest for a moment"
+    private static let fallbackSubline = "Let your eyes rest for a moment"
+
+    static var all: [BreakMessage] {
+        if let data = UserDefaults.standard.data(forKey: DefaultsKey.breakMessages),
+           let stored = try? JSONDecoder().decode([BreakMessage].self, from: data) {
+            return stored
+        }
+        // First run, or the pre-model `[String]` key.
+        let titles = UserDefaults.standard.stringArray(forKey: DefaultsKey.messages) ?? defaults
+        return titles.map { BreakMessage(title: $0, subline: defaultSublines[$0] ?? "") }
+    }
+
+    static func save(_ messages: [BreakMessage]) {
+        guard let data = try? JSONEncoder().encode(messages) else { return }
+        UserDefaults.standard.set(data, forKey: DefaultsKey.breakMessages)
     }
 
     static var current: [String] {
-        let stored = UserDefaults.standard.stringArray(forKey: DefaultsKey.messages) ?? []
-        let cleaned = stored.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let cleaned = all.map { $0.title.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         return cleaned.isEmpty ? defaults : cleaned
+    }
+
+    static func subline(for title: String) -> String {
+        let custom = all.first { $0.title.trimmingCharacters(in: .whitespaces) == title }?
+            .subline.trimmingCharacters(in: .whitespaces)
+        if let custom, !custom.isEmpty { return custom }
+        return defaultSublines[title] ?? fallbackSubline
     }
 }
