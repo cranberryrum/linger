@@ -97,7 +97,7 @@ struct BreakContentView: View {
     private var skipControl: some View {
         switch presentation.skipDifficulty {
         case .casual:
-            Button("Skip ⎋", action: onSkip)
+            Button(action: onSkip) { SkipLabel(verb: "Press") }
                 .buttonStyle(OverlayButtonStyle())
                 .onChange(of: input.escapeIsDown) { _, down in
                     if down { onSkip() }
@@ -111,6 +111,26 @@ struct BreakContentView: View {
 }
 
 // MARK: - Controls
+
+// "Hold Esc to skip": the key is drawn as a key so it reads as a key, not a word.
+private struct SkipLabel: View {
+    let verb: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(verb)
+            Text("Esc")
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .padding(.horizontal, 6)
+                .frame(height: 20)
+                .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(.white.opacity(0.22), lineWidth: 1))
+            Text("to skip")
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(verb) Escape to skip")
+    }
+}
 
 private struct OverlayButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
@@ -135,7 +155,7 @@ private struct HoldToSkipButton: View {
     @State private var holdTask: Task<Void, Never>?
 
     var body: some View {
-        Text("Hold to skip ⎋")
+        SkipLabel(verb: "Hold")
             .font(.body.weight(.medium))
             .foregroundStyle(.white.opacity(0.9))
             .padding(.horizontal, 18)
