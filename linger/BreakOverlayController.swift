@@ -14,7 +14,7 @@ final class BreakOverlayController {
     private func observe() {
         withObservationTracking {
             handle(state: scheduler.state)
-        } onChange: {
+        } onChange: { [weak self] in
             Task { @MainActor [weak self] in self?.observe() }
         }
     }

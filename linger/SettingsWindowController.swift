@@ -1,8 +1,10 @@
 import AppKit
 import SwiftUI
 
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private static let frameName = "SettingsWindow"
+
+    var onClose: (() -> Void)?
 
     init(scheduler: BreakScheduler, debug: DebugActions) {
         let hosting = NSHostingController(rootView: SettingsView(scheduler: scheduler, debug: debug))
@@ -17,6 +19,11 @@ final class SettingsWindowController: NSWindowController {
         }
         window.setFrameAutosaveName(Self.frameName)
         super.init(window: window)
+        window.delegate = self
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        onClose?()
     }
 
     @available(*, unavailable)

@@ -30,7 +30,7 @@ final class HeadsUpPanelController {
     private func observe() {
         withObservationTracking {
             if scheduler.state != .working { dismiss() }
-        } onChange: {
+        } onChange: { [weak self] in
             Task { @MainActor [weak self] in self?.observe() }
         }
     }
@@ -101,7 +101,8 @@ final class HeadsUpPanelController {
             panel.animator().alphaValue = 0
             panel.animator().setFrame(exit, display: true)
         }, completionHandler: {
-            MainActor.assumeIsolated { panel.orderOut(nil) }
+            // Close, not orderOut: a hidden panel would stay alive and keep re-rendering the countdown every second.
+            MainActor.assumeIsolated { panel.close() }
         })
     }
 

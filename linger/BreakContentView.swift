@@ -20,7 +20,9 @@ struct BreakContentView: View {
     @State private var settled = false
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30)) { context in
+        // One tick per second, aligned to the break's start; the ring tweens between ticks, so the
+        // full-screen content is not re-evaluated at frame rate for the whole break.
+        TimelineView(.periodic(from: presentation.startedAt, by: 1)) { context in
             let remaining = max(0, presentation.endsAt.timeIntervalSince(context.date))
 
             ZStack {
@@ -79,6 +81,7 @@ struct BreakContentView: View {
                 .trim(from: 0, to: progress)
                 .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 4, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+                .animation(.linear(duration: 1), value: progress)
             Text("\(secondsLeft)")
                 .font(.system(size: 28, design: .rounded))
                 .monospacedDigit()

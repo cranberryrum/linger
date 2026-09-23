@@ -7,12 +7,16 @@ final class CursorCountdownController {
     private static let height: CGFloat = 34
     private static let cursorGap: CGFloat = 18
     private static let followRate: CGFloat = 0.28
+    private static let settleDistance: CGFloat = 0.5
 
     private let scheduler: BreakScheduler
     private var panel: NSPanel?
     private var hosting: NSHostingView<CursorPillView>?
     private var followTimer: Timer?
+    private var mouseMonitors: [Any] = []
     private var position: NSPoint = .zero
+    private var target: NSPoint = .zero
+    private var reduceMotion = false
 
     init(scheduler: BreakScheduler) {
         self.scheduler = scheduler
@@ -22,7 +26,7 @@ final class CursorCountdownController {
     private func observe() {
         withObservationTracking {
             update()
-        } onChange: {
+        } onChange: { [weak self] in
             Task { @MainActor [weak self] in self?.observe() }
         }
     }
@@ -47,6 +51,7 @@ final class CursorCountdownController {
         let size = NSSize(width: hosting.fittingSize.width, height: Self.height)
         if panel.frame.size != size {
             panel.setContentSize(size)
+            pointerMoved()
         }
     }
 
@@ -85,7 +90,9 @@ final class CursorCountdownController {
         backdrop.addSubview(hosting)
         panel.contentView = backdrop
 
-        position = targetOrigin(for: panel.frame.size)
+        reduceMotion = Motion.reduceMotion
+        target = targetOrigin(for: panel.frame.size)
+        position = target
         panel.setFrameOrigin(position)
         panel.alphaValue = 0
         panel.orderFrontRegardless()
@@ -98,6 +105,49 @@ final class CursorCountdownController {
         self.panel = panel
         self.hosting = hosting
 
+        // The pill moves only when the pointer does: mouse events wake the follow loop and it stops
+        // again once the pill has settled, so a still cursor costs no frames at all.
+        let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: moves, handler: { [weak self] _ in
+            MainActor.assumeIsolated { self?.pointerMoved() }
+        }) {
+            mouseMonitors.append(global)
+        }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: moves, handler: { [weak self] event in
+            MainActor.assumeIsolated { self?.pointerMoved() }
+            return event
+        }) {
+            mouseMonitors.append(local)
+        }
+    }
+
+    private func hide() {
+        guard let panel else { return }
+        self.panel = nil
+        hosting = nil
+        stopFollowing()
+        for monitor in mouseMonitors { NSEvent.removeMonitor(monitor) }
+        mouseMonitors = []
+
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.12
+            context.timingFunction = Motion.easeOutCurve
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            // Close so the panel is actually released; an ordered-out panel stays alive in NSApp's window list.
+            MainActor.assumeIsolated { panel.close() }
+        })
+    }
+
+    private func pointerMoved() {
+        guard let panel else { return }
+        target = targetOrigin(for: panel.frame.size)
+        if reduceMotion {
+            position = target
+            panel.setFrameOrigin(position)
+            return
+        }
+        guard followTimer == nil else { return }
         let timer = Timer(timeInterval: 1 / 60, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.follow() }
         }
@@ -105,32 +155,23 @@ final class CursorCountdownController {
         followTimer = timer
     }
 
-    private func hide() {
-        guard let panel else { return }
-        self.panel = nil
-        hosting = nil
-        followTimer?.invalidate()
-        followTimer = nil
-
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.12
-            context.timingFunction = Motion.easeOutCurve
-            panel.animator().alphaValue = 0
-        }, completionHandler: {
-            MainActor.assumeIsolated { panel.orderOut(nil) }
-        })
-    }
-
     private func follow() {
-        guard let panel else { return }
-        let target = targetOrigin(for: panel.frame.size)
-        if Motion.reduceMotion {
+        guard let panel else {
+            stopFollowing()
+            return
+        }
+        position.x += (target.x - position.x) * Self.followRate
+        position.y += (target.y - position.y) * Self.followRate
+        if abs(target.x - position.x) < Self.settleDistance, abs(target.y - position.y) < Self.settleDistance {
             position = target
-        } else {
-            position.x += (target.x - position.x) * Self.followRate
-            position.y += (target.y - position.y) * Self.followRate
+            stopFollowing()
         }
         panel.setFrameOrigin(position)
+    }
+
+    private func stopFollowing() {
+        followTimer?.invalidate()
+        followTimer = nil
     }
 
     private func targetOrigin(for size: NSSize) -> NSPoint {
