@@ -64,7 +64,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 showRunningHint: { [weak self] in self?.statusItemController?.showRunningHint() },
                 showOnboarding: { [weak self] in self?.showOnboarding() }
             )
-            settingsWindowController = SettingsWindowController(scheduler: scheduler, debug: debug)
+            let controller = SettingsWindowController(scheduler: scheduler, debug: debug)
+            // A closed-but-alive Settings window would keep its countdown views updating every second.
+            // Dropping it after the close finishes tears the SwiftUI tree down; the frame is autosaved.
+            controller.onClose = { [weak self] in
+                Task { @MainActor [weak self] in self?.settingsWindowController = nil }
+            }
+            settingsWindowController = controller
         }
         settingsWindowController?.show()
     }

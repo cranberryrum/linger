@@ -56,8 +56,10 @@ final class OverlayPresenter {
                 context.timingFunction = Motion.gentleCurve
                 for window in fading { window.animator().alphaValue = 0 }
             }, completionHandler: {
+                // NSApp keeps every window alive until it is closed; an orderOut alone would leave a
+                // full-screen window (and its ticking content view) behind after every break.
                 MainActor.assumeIsolated {
-                    for window in fading { window.orderOut(nil) }
+                    for window in fading { window.close() }
                 }
             })
         }
@@ -68,7 +70,7 @@ final class OverlayPresenter {
 
     private func screensDidChange() {
         guard presentation != nil else { return }
-        for window in windows { window.orderOut(nil) }
+        for window in windows { window.close() }
         windows = []
         buildWindows(fadeIn: false)
     }

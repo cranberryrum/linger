@@ -8,6 +8,9 @@ final class StatusItemController {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var hintPopover: NSPopover?
 
+    private static let eyeImage = NSImage(systemSymbolName: "eye", accessibilityDescription: "linger")
+    private static let pausedImage = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "linger")
+
     private let statusLine = NSMenuItem()
     private let takeBreakItem = NSMenuItem(title: "Take a Break Now", action: #selector(takeBreakNow), keyEquivalent: "")
     private let postponeItem = NSMenuItem(title: "Postpone 5 Minutes", action: #selector(postpone), keyEquivalent: "")
@@ -26,6 +29,7 @@ final class StatusItemController {
         let menu = NSMenu()
         statusLine.isEnabled = false
         statusItem.button?.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        statusItem.button?.imagePosition = .imageLeading
 
         // Display only: the Carbon hot key does the real work, and startBreakNow is idempotent.
         takeBreakItem.keyEquivalent = "l"
@@ -60,23 +64,29 @@ final class StatusItemController {
         let countdown = MenuBarCountdown.current
         let paused = scheduler.isPaused
 
-        button.image = NSImage(systemSymbolName: paused ? "eye.slash" : "eye", accessibilityDescription: "linger")
-        button.imagePosition = .imageLeading
-
+        let title: String
+        let status: String
         switch scheduler.state {
         case .working, .waitingForInputPause:
-            button.title = Self.menuBarTitle(scheduler.remaining, mode: countdown)
-            statusLine.title = "Next break in \(Self.clock(scheduler.remaining))"
+            title = Self.menuBarTitle(scheduler.remaining, mode: countdown)
+            status = "Next break in \(Self.clock(scheduler.remaining))"
         case .onBreak:
-            button.title = countdown == .off ? "" : Self.clock(scheduler.remaining)
-            statusLine.title = "Break ends in \(Self.clock(scheduler.remaining))"
+            title = countdown == .off ? "" : Self.clock(scheduler.remaining)
+            status = "Break ends in \(Self.clock(scheduler.remaining))"
         case .paused(let until):
-            button.title = ""
-            statusLine.title = BreakScheduler.pauseDescription(until: until)
+            title = ""
+            status = BreakScheduler.pauseDescription(until: until)
         case .suspended:
-            button.title = ""
-            statusLine.title = "Paused while the screen is off"
+            title = ""
+            status = "Paused while the screen is off"
         }
+
+        // This runs every second; in minutes mode the title changes once a minute, and the same
+        // string would still make the menu bar re-layout and redraw.
+        let image = paused ? Self.pausedImage : Self.eyeImage
+        if button.image !== image { button.image = image }
+        if button.title != title { button.title = title }
+        if statusLine.title != status { statusLine.title = status }
 
         takeBreakItem.isHidden = paused
         postponeItem.isHidden = paused

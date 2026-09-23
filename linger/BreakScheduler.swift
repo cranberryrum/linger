@@ -82,6 +82,9 @@ final class BreakScheduler {
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
+        // Everything is computed from the clock, not from tick count, so the system may batch this
+        // wakeup with others instead of waking the process on an exact 1 s grid.
+        timer.tolerance = 0.2
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }
