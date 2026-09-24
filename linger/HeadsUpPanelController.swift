@@ -7,7 +7,7 @@ final class HeadsUpPanelController {
     private static let margin: CGFloat = 16
     private static let autoDismiss: TimeInterval = 10
     private static let dismissAfterHover: TimeInterval = 3
-    private static let confirmationHold: TimeInterval = 1.4
+    private static let confirmationHold: TimeInterval = 4
     private static let swipeDistance: CGFloat = 60
     private static let swipeVelocity: CGFloat = 500
 
@@ -203,7 +203,6 @@ final class HeadsUpPanelController {
                 self?.scheduler.startBreakNow()
             },
             onPostpone: { [weak self] amount in self?.postpone(by: amount) },
-            onClose: { [weak self] in self?.dismiss() },
             onHover: { [weak self] hovering in self?.hoverChanged(hovering) },
             onDragChanged: { [weak self] in self?.dragChanged() },
             onDragEnded: { [weak self] in self?.dragEnded() }
@@ -221,80 +220,60 @@ private struct HeadsUpView: View {
     let size: NSSize
     let onStartNow: () -> Void
     let onPostpone: (TimeInterval) -> Void
-    let onClose: () -> Void
     let onHover: (Bool) -> Void
     let onDragChanged: () -> Void
     let onDragEnded: () -> Void
 
-    @State private var hovering = false
     @State private var postponedBy: TimeInterval?
 
     private static let postponeMinutes = [1, 10, 15]
 
     var body: some View {
         let seconds = Int(scheduler.remaining.rounded(.up))
-        ZStack(alignment: .topTrailing) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Break starting in")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.92))
-                Text("\(seconds / 60):\(String(format: "%02d", seconds % 60))")
-                    .font(.system(size: 34, weight: .bold))
-                    .tracking(-0.7)
-                    .monospacedDigit()
-                    .foregroundStyle(.white)
-                    .contentTransition(.numericText(countsDown: true))
-                    .animation(Motion.easeOut(0.3), value: seconds)
-                    .padding(.top, 2)
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Break starting in")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
+            Text("\(seconds / 60):\(String(format: "%02d", seconds % 60))")
+                .font(.system(size: 34, weight: .bold))
+                .tracking(-0.7)
+                .monospacedDigit()
+                .foregroundStyle(.white)
+                .contentTransition(.numericText(countsDown: true))
+                .animation(Motion.easeOut(0.3), value: seconds)
+                .padding(.top, 2)
 
-                Spacer(minLength: 12)
+            Spacer(minLength: 12)
 
-                ZStack(alignment: .leading) {
-                    if let postponedBy {
-                        Text("Postponed \(Int(postponedBy / 60)) min · next break at \(scheduler.nextBreakAt.formatted(date: .omitted, time: .shortened))")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .lineLimit(1)
-                            .frame(height: 30, alignment: .leading)
-                            .transition(.opacity)
-                    } else {
-                        HStack(spacing: 6) {
-                            Button("Start now", action: onStartNow)
-                                .buttonStyle(PillButtonStyle(prominent: true))
-                            Spacer(minLength: 8)
-                            ForEach(Self.postponeMinutes, id: \.self) { minutes in
-                                Button("+\(minutes) min") { postpone(TimeInterval(minutes * 60)) }
-                                    .buttonStyle(PillButtonStyle(prominent: false))
-                            }
-                            .disabled(!scheduler.canPostpone)
-                            .help("Postpone the break, up to three times per cycle")
-                        }
+            ZStack(alignment: .leading) {
+                if let postponedBy {
+                    Text("Postponed \(Int(postponedBy / 60)) min · next break at \(scheduler.nextBreakAt.formatted(date: .omitted, time: .shortened))")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .lineLimit(1)
+                        .frame(height: 30, alignment: .leading)
                         .transition(.opacity)
+                } else {
+                    HStack(spacing: 6) {
+                        Button("Start now", action: onStartNow)
+                            .buttonStyle(PillButtonStyle(prominent: true))
+                        Spacer(minLength: 8)
+                        ForEach(Self.postponeMinutes, id: \.self) { minutes in
+                            Button("+\(minutes) min") { postpone(TimeInterval(minutes * 60)) }
+                                .buttonStyle(PillButtonStyle(prominent: false))
+                        }
+                        .disabled(!scheduler.canPostpone)
+                        .help("Postpone the break, up to three times per cycle")
                     }
+                    .transition(.opacity)
                 }
-                .animation(Motion.easeOut(0.2), value: postponedBy)
             }
-            .padding(20)
-
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.6))
-                    .frame(width: 20, height: 20)
-                    .background(.white.opacity(0.12), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .padding(10)
-            .opacity(hovering ? 1 : 0)
-            .animation(Motion.easeOut(0.15), value: hovering)
-            .accessibilityLabel("Dismiss")
+            .animation(Motion.easeOut(0.2), value: postponedBy)
         }
+        .padding(20)
         .frame(width: size.width, height: size.height, alignment: .topLeading)
         .contentShape(Rectangle())
-        .onHover { inside in
-            hovering = inside
-            onHover(inside)
-        }
+        .onHover(perform: onHover)
         .gesture(
             DragGesture(minimumDistance: 8)
                 .onChanged { _ in onDragChanged() }
