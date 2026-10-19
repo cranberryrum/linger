@@ -21,19 +21,25 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             List(SettingsSection.allCases, selection: $selection) { section in
                 Label(section.rawValue, systemImage: section.symbol)
                     .tag(section)
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            // Native sidebar rows include 8 pt of inset; match the form's 20 pt gutter.
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 AuthorRow()
-                    .padding(12)
+                    .padding(20)
             }
-            .navigationTitle("linger")
-            .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
-        } detail: {
+            .background(SettingsBackground(sidebar: true))
+            .frame(width: 220)
+
+            Divider()
+
             Group {
                 switch selection ?? .breaks {
                 case .breaks:
@@ -46,10 +52,12 @@ struct SettingsView: View {
                     DebugSettingsView(scheduler: scheduler, actions: debug)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(SettingsBackground())
             .navigationTitle("linger")
             .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 700, minHeight: 480)
+        .frame(width: 700, height: 480)
     }
 }
 
@@ -254,7 +262,7 @@ private struct AuthorRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Aditya Kolte")
                     .font(.callout.weight(.medium))
-                Text("Product designer who builds & ships.")
+                Text("Product designer who builds.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

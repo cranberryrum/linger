@@ -10,15 +10,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let hosting = NSHostingController(rootView: SettingsView(scheduler: scheduler, debug: debug))
 
         let window = NSWindow(contentViewController: hosting)
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.setContentSize(NSSize(width: 780, height: 580))
-        window.contentMinSize = NSSize(width: 700, height: 480)
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.collectionBehavior = [.fullScreenNone]
         window.toolbarStyle = .unified
         window.title = "linger"
         window.isReleasedWhenClosed = false
         if !window.setFrameUsingName(Self.frameName) {
             window.center()
         }
+        let contentSize = NSSize(width: 700, height: 480)
+        window.setContentSize(contentSize)
+        window.contentMinSize = contentSize
+        window.contentMaxSize = contentSize
         window.setFrameAutosaveName(Self.frameName)
         super.init(window: window)
         window.delegate = self
