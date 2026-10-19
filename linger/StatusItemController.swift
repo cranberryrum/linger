@@ -16,6 +16,7 @@ final class StatusItemController {
     private let pauseHourItem = NSMenuItem(title: "Pause for 1 Hour", action: #selector(pauseForHour), keyEquivalent: "")
     private let pauseTomorrowItem = NSMenuItem(title: "Pause Until Tomorrow", action: #selector(pauseUntilTomorrow), keyEquivalent: "")
     private let resumeItem = NSMenuItem(title: "Resume", action: #selector(resume), keyEquivalent: "")
+    private let endMeetingHoldItem = NSMenuItem(title: "Resume Breaks Now", action: #selector(endMeetingHold), keyEquivalent: "")
 
     init(scheduler: BreakScheduler, openSettings: @escaping () -> Void) {
         self.scheduler = scheduler
@@ -40,7 +41,7 @@ final class StatusItemController {
         let items = [
             statusLine, .separator(),
             takeBreakItem, postponeItem, .separator(),
-            pauseHourItem, pauseTomorrowItem, resumeItem, .separator(),
+            pauseHourItem, pauseTomorrowItem, resumeItem, endMeetingHoldItem, .separator(),
             settingsItem, quitItem,
         ]
         for item in items {
@@ -81,8 +82,14 @@ final class StatusItemController {
         let status: String
         switch scheduler.state {
         case .working, .waitingForInputPause:
-            title = Self.menuBarTitle(scheduler.remaining, mode: countdown)
-            status = "Next break in \(Self.clock(scheduler.remaining))"
+            if let hold = Self.meetingHoldDescription(scheduler) {
+                // The countdown is frozen at the heads-up line; a number that doesn't move would mislead.
+                title = ""
+                status = hold
+            } else {
+                title = Self.menuBarTitle(scheduler.remaining, mode: countdown)
+                status = "Next break in \(Self.clock(scheduler.remaining))"
+            }
         case .onBreak:
             title = countdown == .off ? "" : Self.clock(scheduler.remaining)
             status = "Break ends in \(Self.clock(scheduler.remaining))"
@@ -110,6 +117,15 @@ final class StatusItemController {
         pauseHourItem.isHidden = paused
         pauseTomorrowItem.isHidden = paused
         resumeItem.isHidden = !paused
+        endMeetingHoldItem.isHidden = paused || scheduler.manualMeetingHoldUntil == nil || scheduler.meeting != nil
+    }
+
+    private static func meetingHoldDescription(_ scheduler: BreakScheduler) -> String? {
+        switch scheduler.meeting {
+        case .call: return "Break after your call"
+        case .presenting: return "Break after your presentation"
+        case nil: return scheduler.manualMeetingHoldUntil == nil ? nil : "Break after your meeting"
+        }
     }
 
     // Shown once after onboarding so the user knows where the app went.
@@ -151,6 +167,7 @@ final class StatusItemController {
     @objc private func pauseForHour() { scheduler.pause(for: 3600) }
     @objc private func pauseUntilTomorrow() { scheduler.pauseUntilTomorrow() }
     @objc private func resume() { scheduler.resume() }
+    @objc private func endMeetingHold() { scheduler.endMeetingHold() }
 
     @objc private func openSettings() { openSettingsAction() }
 

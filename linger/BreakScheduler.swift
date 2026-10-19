@@ -20,12 +20,20 @@ final class BreakScheduler {
     static let maxPostpones = 3
     static let headsUpLead: TimeInterval = 60
     static let finalCountdownLead: TimeInterval = 10
+    // What one heads-up card may add in total, however many pills are clicked.
+    static let maxPostponePerHeadsUp: TimeInterval = 15 * 60
+    // A calendar event that runs all afternoon still doesn't switch breaks off for longer than this.
+    static let manualMeetingHoldCap: TimeInterval = 3 * 60 * 60
 
     private(set) var state: State = .working
     private(set) var nextBreakAt = Date()
     private(set) var remaining: TimeInterval = 0
     private(set) var postponeCount = 0
     private(set) var postponedTotal: TimeInterval = 0
+    // A call or presentation linger has detected; while set, the break waits at the heads-up line.
+    private(set) var meeting: MeetingDetector.Activity?
+    // The user said "after meeting" on the heads-up.
+    private(set) var manualMeetingHoldUntil: Date?
 
     var workInterval: TimeInterval {
         didSet {
@@ -58,6 +66,8 @@ final class BreakScheduler {
 
     var isRunning: Bool { timer != nil }
 
+    var isHoldingForMeeting: Bool { meeting != nil || manualMeetingHoldUntil != nil }
+
     @ObservationIgnored var onBreakCompleted: (() -> Void)?
     @ObservationIgnored var onHeadsUp: (() -> Void)?
     @ObservationIgnored var onFinalCountdown: (() -> Void)?
@@ -67,6 +77,8 @@ final class BreakScheduler {
     @ObservationIgnored private var finalCountdownFired = false
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var observers: [any NSObjectProtocol] = []
+    @ObservationIgnored private let meetingDetector = MeetingDetector()
+    @ObservationIgnored private var manualHoldSawMeeting = false
 
     init() {
         let defaults = UserDefaults.standard
@@ -116,6 +128,25 @@ final class BreakScheduler {
         recomputeNextBreak()
         state = .working
         log.debug("Extended postpone by \(Int(amount)) s, next break at \(self.nextBreakAt)")
+    }
+
+    // Holds the break until the calendar meeting ends, or earlier if a call linger saw has ended.
+    func holdUntilMeetingEnds(_ end: Date) {
+        switch state {
+        case .working, .waitingForInputPause: break
+        default: return
+        }
+        manualMeetingHoldUntil = min(end, Date().addingTimeInterval(Self.manualMeetingHoldCap))
+        manualHoldSawMeeting = meeting != nil
+        state = .working
+        holdAtHeadsUpLine(now: Date())
+        log.debug("Holding breaks until the meeting ends")
+    }
+
+    func endMeetingHold() {
+        guard manualMeetingHoldUntil != nil else { return }
+        manualMeetingHoldUntil = nil
+        log.debug("Meeting hold ended by the user")
     }
 
     func skipBreak() {
@@ -179,6 +210,8 @@ final class BreakScheduler {
     }
 
     private func beginBreak() {
+        // Taking a break, by choice or on schedule, settles any "after meeting" promise.
+        manualMeetingHoldUntil = nil
         let endsAt = Date().addingTimeInterval(breakDuration)
         state = .onBreak(endsAt: endsAt)
         remaining = breakDuration
@@ -195,9 +228,11 @@ final class BreakScheduler {
 
     private func tick() {
         let now = Date()
+        updateMeeting(now: now)
         switch state {
         case .working:
-            if secondsSinceLastInput >= Self.idleThreshold {
+            // On a call nobody touches the keyboard, but the eyes are still on the screen.
+            if meeting == nil, secondsSinceLastInput >= Self.idleThreshold {
                 // Being away counts as a break; keep the full interval ahead of the user.
                 cycleStartedAt = now
                 postponeCount = 0
@@ -210,6 +245,7 @@ final class BreakScheduler {
                 cycleStartedAt = now
                 recomputeNextBreak()
             }
+            if isHoldingForMeeting { holdAtHeadsUpLine(now: now) }
             remaining = max(0, nextBreakAt.timeIntervalSince(now))
             if remaining <= Self.headsUpLead && remaining > 0 && !headsUpFired {
                 headsUpFired = true
@@ -229,6 +265,11 @@ final class BreakScheduler {
             }
 
         case .waitingForInputPause(let since):
+            if isHoldingForMeeting {
+                state = .working
+                holdAtHeadsUpLine(now: now)
+                return
+            }
             remaining = 0
             if secondsSinceLastInput >= Self.inputPauseThreshold || now.timeIntervalSince(since) >= Self.inputPauseCap {
                 beginBreak()
@@ -244,6 +285,39 @@ final class BreakScheduler {
         case .suspended:
             break
         }
+    }
+
+    // MARK: Meetings
+
+    private func updateMeeting(now: Date) {
+        switch state {
+        case .working, .waitingForInputPause:
+            meetingDetector.update(now: now)
+        default:
+            // Paused, asleep or on a break: nothing to hold, and no reason to query the system.
+            if meeting != nil { meeting = nil }
+            return
+        }
+        let detected = meetingDetector.activity
+        if detected != meeting { meeting = detected }
+
+        guard let until = manualMeetingHoldUntil else { return }
+        if detected != nil {
+            manualHoldSawMeeting = true
+        } else if manualHoldSawMeeting || now >= until {
+            log.debug("Meeting hold over")
+            manualMeetingHoldUntil = nil
+            manualHoldSawMeeting = false
+        }
+    }
+
+    // The break never gets closer than the heads-up line while a meeting is on; once it ends,
+    // the heads-up arrives and the break follows a minute later, never as an instant blur.
+    private func holdAtHeadsUpLine(now: Date) {
+        let floor = Self.headsUpLead + 1
+        guard nextBreakAt.timeIntervalSince(now) < floor else { return }
+        cycleStartedAt = now.addingTimeInterval(floor - scheduledLength)
+        recomputeNextBreak()
     }
 
     var secondsSinceLastInput: TimeInterval {
@@ -262,6 +336,11 @@ final class BreakScheduler {
         case .onBreak:
             return
         }
+    }
+
+    func debugSimulateMeeting(for seconds: TimeInterval) {
+        meetingDetector.debugSimulate(for: seconds)
+        updateMeeting(now: Date())
     }
 
     // Runs the real sleep/wake path as if the Mac had been asleep for `gap` seconds.

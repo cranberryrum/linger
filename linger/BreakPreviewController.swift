@@ -17,13 +17,18 @@ final class BreakPreviewController {
             subline: BreakMessages.subline(for: message),
             startedAt: startedAt,
             endsAt: startedAt.addingTimeInterval(duration),
-            skipDifficulty: SkipDifficulty.current
+            skipDifficulty: SkipDifficulty.current,
+            workInterval: UserDefaults.standard.double(forKey: DefaultsKey.workIntervalSec)
         )
 
-        presenter.present(presentation) { [weak self] in
-            guard presentation.canSkip else { return }
-            self?.finish(skipped: true)
-        }
+        presenter.present(
+            presentation,
+            onSkip: { [weak self] in
+                guard presentation.canSkip else { return }
+                self?.finish(skipped: true)
+            },
+            onEmergencyExit: { [weak self] in self?.finish(skipped: true) }
+        )
         Sounds.play(.breakStart)
         finishTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(duration))

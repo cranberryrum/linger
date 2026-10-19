@@ -6,8 +6,27 @@ import SwiftUI
 // held for hold-to-skip just like the mouse.
 @Observable
 final class OverlayInput {
+    static let emergencyPresses = 5
+    static let emergencyWindow: TimeInterval = 3
+
     var escapeIsDown = false
     var isDismissing = false
+    // Set once Esc has been pressed enough times in Never mode; the content shows a goodbye line.
+    var isEmergencyExit = false
+
+    // Only wired up when skipping is otherwise impossible. Deliberately never mentioned in the UI:
+    // it exists so a stuck or badly timed break can always be ended, not as a skip shortcut.
+    @ObservationIgnored var onEmergencyExit: (() -> Void)?
+    @ObservationIgnored private var escapePresses: [Date] = []
+
+    func escapePressed() {
+        guard let onEmergencyExit, !isEmergencyExit else { return }
+        let now = Date()
+        escapePresses = escapePresses.filter { now.timeIntervalSince($0) < Self.emergencyWindow } + [now]
+        guard escapePresses.count >= Self.emergencyPresses else { return }
+        isEmergencyExit = true
+        onEmergencyExit()
+    }
 }
 
 final class OverlayPresenter {
@@ -15,6 +34,7 @@ final class OverlayPresenter {
     private var presentation: BreakPresentation?
     private var input = OverlayInput()
     private var onSkip: () -> Void = {}
+    private var onEmergencyExit: () -> Void = {}
     private var previousApp: NSRunningApplication?
     private var screenObserver: (any NSObjectProtocol)?
 
@@ -28,11 +48,15 @@ final class OverlayPresenter {
         }
     }
 
-    func present(_ presentation: BreakPresentation, onSkip: @escaping () -> Void) {
+    func present(_ presentation: BreakPresentation, onSkip: @escaping () -> Void, onEmergencyExit: @escaping () -> Void) {
         guard self.presentation == nil else { return }
         self.presentation = presentation
         self.onSkip = onSkip
+        self.onEmergencyExit = onEmergencyExit
         input = OverlayInput()
+        if !presentation.canSkip {
+            input.onEmergencyExit = { [weak self] in self?.emergencyExit() }
+        }
         previousApp = NSWorkspace.shared.frontmostApplication
         buildWindows(fadeIn: true)
         NSCursor.hide()
@@ -66,6 +90,15 @@ final class OverlayPresenter {
 
         previousApp?.activate()
         previousApp = nil
+    }
+
+    // The goodbye line gets a moment to be read before the break ends.
+    private func emergencyExit() {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.8))
+            guard let self, self.presentation != nil else { return }
+            self.onEmergencyExit()
+        }
     }
 
     private func screensDidChange() {
@@ -138,7 +171,9 @@ final class OverlayWindow: NSWindow {
     override var canBecomeMain: Bool { true }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53, !event.isARepeat { input.escapeIsDown = true }
+        guard event.keyCode == 53, !event.isARepeat else { return }
+        input.escapeIsDown = true
+        input.escapePressed()
     }
 
     override func keyUp(with event: NSEvent) {

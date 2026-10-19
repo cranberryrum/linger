@@ -128,7 +128,8 @@ private struct PageDots: View {
 // MARK: - Shared page layout
 
 private struct StepPage<Controls: View>: View {
-    let symbol: String
+    // Nil drops the hero symbol, for a step whose controls need the room.
+    let symbol: String?
     let title: String
     let text: String
     var staggered = false
@@ -139,24 +140,12 @@ private struct StepPage<Controls: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Group {
-                if usesLogo {
-                    Image("LingerMark")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 112, height: 64)
-                        .accessibilityLabel("linger")
-                } else {
-                    Image(systemName: symbol)
-                        .font(.system(size: 64))
-                }
+            if usesLogo || symbol != nil {
+                hero
             }
-                .foregroundStyle(Color.accentColor)
-                .frame(height: 76)
-                .entrance(shown, delay: 0)
             Text(title)
                 .font(.largeTitle.weight(.semibold))
-                .padding(.top, 16)
+                .padding(.top, usesLogo || symbol != nil ? 16 : 0)
                 .entrance(shown, delay: 0.05)
             Text(text)
                 .font(.body)
@@ -172,6 +161,24 @@ private struct StepPage<Controls: View>: View {
             Spacer(minLength: 0)
         }
         .onAppear { appeared = true }
+    }
+
+    private var hero: some View {
+        Group {
+            if usesLogo {
+                Image("LingerMark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 112, height: 64)
+                    .accessibilityLabel("linger")
+            } else if let symbol {
+                Image(systemName: symbol)
+                    .font(.system(size: 64))
+            }
+        }
+        .foregroundStyle(Color.accentColor)
+        .frame(height: 76)
+        .entrance(shown, delay: 0)
     }
 
     private var shown: Bool { staggered ? appeared : true }
@@ -253,12 +260,15 @@ private struct BreakLengthStep: View {
 private struct PermissionsStep: View {
     var body: some View {
         StepPage(
-            symbol: "power",
-            title: "One optional setting",
-            text: "linger blurs your screen without any special permissions. This one just means you never have to remember to open it."
+            symbol: nil,
+            title: "Two optional settings",
+            text: "linger blurs your screen without any special permissions. These just make it more convenient."
         ) {
-            LaunchAtLoginRow(model: PermissionsModel.shared)
-                .frame(maxWidth: 460)
+            VStack(alignment: .leading, spacing: 16) {
+                LaunchAtLoginRow(model: PermissionsModel.shared)
+                CalendarRow(model: MeetingCalendar.shared)
+            }
+            .frame(maxWidth: 460)
         }
     }
 }

@@ -226,6 +226,7 @@ struct GeneralSettingsView: View {
         Form {
             Section {
                 LaunchAtLoginRow(model: PermissionsModel.shared)
+                CalendarRow(model: MeetingCalendar.shared)
             }
 
             Section {

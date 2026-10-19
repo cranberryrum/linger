@@ -6,6 +6,7 @@ struct BreakPresentation {
     let startedAt: Date
     let endsAt: Date
     let skipDifficulty: SkipDifficulty
+    let workInterval: TimeInterval
 
     var duration: TimeInterval { endsAt.timeIntervalSince(startedAt) }
     var canSkip: Bool { skipDifficulty.canSkip }
@@ -25,23 +26,30 @@ struct BreakContentView: View {
         TimelineView(.periodic(from: presentation.startedAt, by: 1)) { context in
             let remaining = max(0, presentation.endsAt.timeIntervalSince(context.date))
 
+            let exiting = input.isEmergencyExit
+            let dimmed = settled && !exiting
+
             ZStack {
                 VStack(spacing: 0) {
-                    Text(presentation.message)
+                    Text(exiting ? "Okay, ending this break" : presentation.message)
                         .font(.system(size: 44, weight: .medium))
                         .foregroundStyle(.white.opacity(0.9))
-                        .opacity(settled ? 0.4 : 1)
+                        .opacity(dimmed ? 0.4 : 1)
+                        .contentTransition(.opacity)
                         .entrance(appeared, delay: 0.45, soft: true)
-                    Text(presentation.subline)
+                    Text(exiting ? "Next one in \(Int(presentation.workInterval / 60)) min" : presentation.subline)
                         .font(.system(size: 20))
                         .foregroundStyle(.white.opacity(0.6))
-                        .opacity(settled ? 0.4 : 1)
+                        .opacity(dimmed ? 0.4 : 1)
+                        .contentTransition(.opacity)
                         .padding(.top, 12)
                         .entrance(appeared, delay: 0.6, soft: true)
                     ring(remaining: remaining)
+                        .opacity(exiting ? 0 : 1)
                         .padding(.top, 48)
                         .entrance(appeared, delay: 0.75, soft: true)
                 }
+                .animation(Motion.gentle(Motion.reduceMotion ? 0 : 0.4), value: exiting)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 600)
                 .animation(Motion.gentle(Motion.reduceMotion ? 0 : 1.4), value: settled)

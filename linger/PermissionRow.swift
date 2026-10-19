@@ -70,3 +70,26 @@ struct PermissionRow: View {
         }
     }
 }
+
+struct CalendarRow: View {
+    let model: MeetingCalendar
+
+    var body: some View {
+        PermissionRow(
+            systemImage: "calendar",
+            title: "Know when I'm in a meeting",
+            detail: "Lets the heads-up hold a break until your meeting ends. Your calendar stays on this Mac.",
+            status: status.text,
+            statusURL: status.url,
+            isOn: Binding(get: { model.isOn }, set: { model.setOn($0) })
+        )
+    }
+
+    private var status: (text: String, url: URL?) {
+        switch model.status {
+        case .off: ("Not enabled", nil)
+        case .allowed: ("Allowed", nil)
+        case .denied: ("Denied — turn on in System Settings › Privacy › Calendars", MeetingCalendar.privacyPane)
+        }
+    }
+}

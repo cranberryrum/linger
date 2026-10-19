@@ -19,6 +19,7 @@ struct DebugSettingsView: View {
                 LabeledContent("Remaining", value: "\(Int(scheduler.remaining.rounded(.up))) s")
                 LabeledContent("Postpones", value: "\(scheduler.postponeCount)/\(BreakScheduler.maxPostpones) · +\(Int(scheduler.postponedTotal / 60)) min")
                 LabeledContent("Last input", value: "\(Int(scheduler.secondsSinceLastInput)) s ago")
+                LabeledContent("Meeting", value: meetingDescription)
                 LabeledContent("Skip mode", value: SkipDifficulty.current.rawValue)
             }
             .monospacedDigit()
@@ -33,6 +34,7 @@ struct DebugSettingsView: View {
             Section("Simulate") {
                 Button("Sleep 5 s, wake (resumes where it left off)") { scheduler.debugSimulateSleep(gap: 5) }
                 Button("Sleep 60 s, wake (counts as a break taken)") { scheduler.debugSimulateSleep(gap: 60) }
+                Button("Call for 45 s (break waits, heads-up follows)") { scheduler.debugSimulateMeeting(for: 45) }
                 Button("Postpone 5 min") { scheduler.postpone(by: 5 * 60) }
                     .disabled(!scheduler.canPostpone)
                 if scheduler.isPaused {
@@ -75,6 +77,14 @@ struct DebugSettingsView: View {
         case .onBreak(let endsAt): "on break, ends \(endsAt.formatted(date: .omitted, time: .standard))"
         case .paused(let until): BreakScheduler.pauseDescription(until: until).lowercased()
         case .suspended(let remaining, _): "suspended, \(Int(remaining)) s left"
+        }
+    }
+
+    private var meetingDescription: String {
+        switch scheduler.meeting {
+        case .call(let app): "on a call (\(app))"
+        case .presenting(let app): "presenting (\(app))"
+        case nil: scheduler.manualMeetingHoldUntil.map { "held until meeting ends (cap \($0.formatted(date: .omitted, time: .shortened)))" } ?? "none"
         }
     }
 

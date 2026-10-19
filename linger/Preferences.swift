@@ -33,6 +33,7 @@ enum DefaultsKey {
     static let soundOn = "soundOn"
     static let menuBarCountdown = "menuBarCountdown"
     static let launchAtLoginOn = "launchAtLoginOn"
+    static let calendarOn = "calendarOn"
     static let hasCompletedOnboarding = "hasCompletedOnboarding"
 
     private static let legacyShowCountdownInMenuBar = "showCountdownInMenuBar"
@@ -46,6 +47,7 @@ enum DefaultsKey {
             soundOn: true,
             menuBarCountdown: MenuBarCountdown.minutes.rawValue,
             launchAtLoginOn: true,
+            calendarOn: false,
             hasCompletedOnboarding: false,
         ])
         migrate()
