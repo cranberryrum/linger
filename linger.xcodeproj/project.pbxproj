@@ -6,6 +6,20 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5A1C0DE00000000000000A03 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 5A1C0DE00000000000000A02 /* Sparkle */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7E5700000000000000000007 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 18092A05305BC345004CE6FF /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 18092A0C305BC345004CE6FF;
+			remoteInfo = linger;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		18092A0D305BC345004CE6FF /* linger.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = linger.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7E5700000000000000000001 /* lingerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = lingerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -29,6 +43,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A1C0DE00000000000000A03 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -40,16 +55,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
-
-/* Begin PBXContainerItemProxy section */
-		7E5700000000000000000007 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 18092A05305BC345004CE6FF /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 18092A0C305BC345004CE6FF;
-			remoteInfo = linger;
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXGroup section */
 		18092A04305BC345004CE6FF = {
@@ -90,6 +95,7 @@
 			);
 			name = linger;
 			packageProductDependencies = (
+				5A1C0DE00000000000000A02 /* Sparkle */,
 			);
 			productName = linger;
 			productReference = 18092A0D305BC345004CE6FF /* linger.app */;
@@ -146,6 +152,9 @@
 			);
 			mainGroup = 18092A04305BC345004CE6FF;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5A1C0DE00000000000000A01 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 18092A0E305BC345004CE6FF /* Products */;
 			projectDirPath = "";
@@ -325,17 +334,19 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Support/linger.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = GUPY65XT35;
+				DEVELOPMENT_TEAM = 5PYDBJJN92;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
+				INFOPLIST_FILE = Support/Info.plist;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "linger reads your calendar so the heads-up can name your meeting and hold the break until it ends. Nothing leaves your Mac.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -361,17 +372,19 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Support/linger.entitlements;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = GUPY65XT35;
+				DEVELOPMENT_TEAM = 5PYDBJJN92;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = YES;
+				INFOPLIST_FILE = Support/Info.plist;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "linger reads your calendar so the heads-up can name your meeting and hold the break until it ends. Nothing leaves your Mac.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -397,7 +410,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = GUPY65XT35;
+				DEVELOPMENT_TEAM = 5PYDBJJN92;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
@@ -416,7 +429,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = GUPY65XT35;
+				DEVELOPMENT_TEAM = 5PYDBJJN92;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
@@ -461,6 +474,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		5A1C0DE00000000000000A01 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.10.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5A1C0DE00000000000000A02 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A1C0DE00000000000000A01 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 18092A05305BC345004CE6FF /* Project object */;
 }

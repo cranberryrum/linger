@@ -19,6 +19,7 @@ final class StatusItemController {
     private let pauseTomorrowItem = NSMenuItem(title: "Pause Until Tomorrow", action: #selector(pauseUntilTomorrow), keyEquivalent: "")
     private let resumeItem = NSMenuItem(title: "Resume", action: #selector(resume), keyEquivalent: "")
     private let endMeetingHoldItem = NSMenuItem(title: "Resume Breaks Now", action: #selector(endMeetingHold), keyEquivalent: "")
+    private let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
 
     init(scheduler: BreakScheduler, openSettings: @escaping () -> Void) {
         self.scheduler = scheduler
@@ -46,7 +47,7 @@ final class StatusItemController {
             statusLine, .separator(),
             takeBreakItem, takeLongBreakItem, postponeItem, .separator(),
             startBreaksItem, pauseHourItem, pauseTomorrowItem, resumeItem, endMeetingHoldItem, .separator(),
-            settingsItem, quitItem,
+            updateItem, settingsItem, quitItem,
         ]
         for item in items {
             item.target = self
@@ -129,6 +130,16 @@ final class StatusItemController {
         pauseTomorrowItem.isHidden = paused || resting
         resumeItem.isHidden = !paused
         endMeetingHoldItem.isHidden = paused || resting || scheduler.manualMeetingHoldUntil == nil || scheduler.meeting != nil
+
+        let updater = Updater.shared
+        let updateTitle = if updater.readyVersion != nil {
+            "Install Update and Relaunch"
+        } else if let available = updater.availableVersion {
+            "Update to \(available)…"
+        } else {
+            "Check for Updates…"
+        }
+        if updateItem.title != updateTitle { updateItem.title = updateTitle }
     }
 
     private static func meetingHoldDescription(_ scheduler: BreakScheduler) -> String? {
@@ -182,6 +193,7 @@ final class StatusItemController {
     @objc private func resume() { scheduler.resume() }
     @objc private func endMeetingHold() { scheduler.endMeetingHold() }
 
+    @objc private func checkForUpdates() { Updater.shared.checkForUpdates() }
     @objc private func openSettings() { openSettingsAction() }
 
     @objc private func quit() { NSApp.terminate(nil) }

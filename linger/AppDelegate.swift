@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Unit tests are hosted by the app; they need its code, not a running scheduler or onboarding.
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        AppAppearance.current.apply()
         NSApp.mainMenu = makeMainMenu()
         statusItemController = StatusItemController(scheduler: scheduler) { [weak self] in self?.openSettings() }
         overlayController = BreakOverlayController(scheduler: scheduler)
@@ -35,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             scheduler.startBreakNow()
         }
         scheduler.onBreakCompleted = { Sounds.play(.breakEnd) }
+        Updater.shared.start(scheduler: scheduler)
 
         if UserDefaults.standard.bool(forKey: DefaultsKey.hasCompletedOnboarding) {
             scheduler.start()

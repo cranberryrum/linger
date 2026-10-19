@@ -349,9 +349,21 @@ private struct MessageListSection: View {
 struct GeneralSettingsView: View {
     let showOnboarding: () -> Void
     @AppStorage(DefaultsKey.menuBarCountdown) private var countdown: MenuBarCountdown = .minutes
+    @AppStorage(DefaultsKey.appearance) private var appearance: AppAppearance = .auto
+    @Bindable private var updater = Updater.shared
 
     var body: some View {
         Form {
+            Section {
+                Picker("Appearance", selection: $appearance) {
+                    Text("Auto").tag(AppAppearance.auto)
+                    Text("Light").tag(AppAppearance.light)
+                    Text("Dark").tag(AppAppearance.dark)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: appearance) { _, value in value.apply() }
+            }
+
             Section {
                 LaunchAtLoginRow(model: PermissionsModel.shared)
                 CalendarRow(model: MeetingCalendar.shared)
@@ -373,6 +385,13 @@ struct GeneralSettingsView: View {
                         .monospaced()
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            Section {
+                Toggle("Update automatically", isOn: $updater.automaticallyUpdates)
+                LabeledContent("Version", value: updater.version)
+            } footer: {
+                Text("New versions download quietly and install the next time you step away.")
             }
 
             Section {

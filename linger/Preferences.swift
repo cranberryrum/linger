@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 enum SkipDifficulty: String, CaseIterable, Identifiable {
@@ -24,6 +25,24 @@ enum MenuBarCountdown: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case auto, light, dark
+
+    var id: Self { self }
+
+    static var current: AppAppearance {
+        AppAppearance(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.appearance) ?? "") ?? .auto
+    }
+
+    func apply() {
+        switch self {
+        case .auto: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
 enum DefaultsKey {
     static let workIntervalSec = "workIntervalSec"
     static let breakDurationSec = "breakDurationSec"
@@ -31,6 +50,7 @@ enum DefaultsKey {
     static let messages = "messages"
     static let breakMessages = "breakMessages"
     static let soundOn = "soundOn"
+    static let appearance = "appearance"
     static let menuBarCountdown = "menuBarCountdown"
     static let launchAtLoginOn = "launchAtLoginOn"
     static let calendarOn = "calendarOn"
@@ -51,6 +71,7 @@ enum DefaultsKey {
             skipDifficulty: SkipDifficulty.balanced.rawValue,
             messages: BreakMessages.defaults,
             soundOn: true,
+            appearance: AppAppearance.auto.rawValue,
             menuBarCountdown: MenuBarCountdown.minutes.rawValue,
             launchAtLoginOn: true,
             calendarOn: false,

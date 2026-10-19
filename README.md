@@ -16,6 +16,7 @@ Every ~20 minutes the screen frosts over, a short line appears ("Look far away")
 - **Three skip modes** — *Anytime*, *Hold to skip* (hold the button or Esc for one second), or *Never*.
 - **Menu bar control** — time to next break, take a break now, postpone, pause for an hour / until tomorrow, and a Settings window with a live countdown card and preset sliders.
 - **Global shortcut** — ⌃⌥⌘L starts a break from anywhere.
+- **Quiet updates** — new versions download in the background and install the next time you've stepped away from the Mac; until then the only trace is the menu item reading *Install Update and Relaunch*.
 - **Soft sounds** — four synthesised tones (before, start, skip, end) from one instrument, all optional.
 
 ## Zero permissions
@@ -36,7 +37,21 @@ open linger/linger.xcodeproj
 
 Select your own team under **Signing & Capabilities**, then ⌘R. The app has no Dock icon — look for the eye in the menu bar. First launch shows a four-screen onboarding; after that it lives entirely in the menu bar.
 
-There are no dependencies and no package manager: SwiftUI for Settings and onboarding, AppKit for the overlay windows, menu bar item and panels.
+The one dependency is [Sparkle](https://sparkle-project.org) for updates, pulled in by Swift Package Manager. Everything else is SwiftUI for Settings and onboarding and AppKit for the overlay windows, menu bar item and panels.
+
+## Releasing
+
+linger ships as a DMG for the first install (a download link, AirDrop) and updates itself through Sparkle afterwards. The feed is [`appcast.xml`](appcast.xml) on `main`; the files live on GitHub Releases.
+
+```
+scripts/release.sh 1.1 --notes "What changed, in a sentence."
+```
+
+The script archives a Release build, signs it with Developer ID, notarizes and staples both the app and the DMG, signs the update zip with the Sparkle key and adds an entry to `appcast.xml`. It prints the `gh release create` and `git push` commands rather than running them. `--unnotarized` builds a test DMG signed with your development certificate, for a friend's Mac only, and leaves the feed alone.
+
+One-time setup: a *Developer ID Application* certificate (paid Apple Developer membership), notarization credentials stored with `xcrun notarytool store-credentials linger-notary`, and the Sparkle private key in your login keychain. The public half is `SUPublicEDKey` in `Support/Info.plist`. Back the private key up with `generate_keys -x <file>`: without it, installed copies can't verify new versions.
+
+Debug builds never check for updates on their own; *Check for Updates…* in the menu still works for trying the flow.
 
 ## Testing without waiting
 
@@ -58,6 +73,7 @@ Settings → **Debug** shows the scheduler's live state and jumps straight to an
 | `OnboardingView.swift` | First-run flow |
 | `Motion.swift` | Shared easing curves and the entrance modifier |
 | `Sounds.swift` | Synthesised sound palette |
+| `Updater.swift` | Sparkle wiring: background updates, installed only at a quiet moment |
 
 ## Design notes
 
