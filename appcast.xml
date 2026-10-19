@@ -3,5 +3,14 @@
   <channel>
     <title>linger</title>
     <language>en</language>
+    <item>
+      <title>linger 1.1</title>
+      <pubDate>Mon, 19 Oct 2026 08:57:33 +0000</pubDate>
+      <sparkle:version>17</sparkle:version>
+      <sparkle:shortVersionString>1.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[Meetings now come from your calendar only: pick the account and calendar in Settings › General. Adds work hours and long breaks.]]></description>
+      <enclosure url="https://github.com/cranberryrum/linger/releases/download/v1.1/linger-1.1.zip" type="application/octet-stream" sparkle:edSignature="FvXX021aelue3NFNGHAyw4MX+5z1vcAh6poEXvbQoz3nF2KFPBZmc6rHL9USmf5yHAMTkUYGz9I35AjJhAQ4Dg==" length="1808951" />
+    </item>
   </channel>
 </rss>
