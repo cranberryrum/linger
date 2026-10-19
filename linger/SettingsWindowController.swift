@@ -8,11 +8,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     init(scheduler: BreakScheduler, debug: DebugActions) {
         let hosting = NSHostingController(rootView: SettingsView(scheduler: scheduler, debug: debug))
-        hosting.sizingOptions = [.preferredContentSize]
 
         let window = NSWindow(contentViewController: hosting)
-        window.styleMask = [.titled, .closable]
-        window.title = "linger Settings"
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.setContentSize(NSSize(width: 780, height: 580))
+        window.contentMinSize = NSSize(width: 700, height: 480)
+        window.toolbarStyle = .unified
+        window.title = "linger"
         window.isReleasedWhenClosed = false
         if !window.setFrameUsingName(Self.frameName) {
             window.center()
@@ -23,6 +25,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
         onClose?()
     }
 
@@ -32,6 +35,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func show() {
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
     }

@@ -49,7 +49,7 @@ Settings → **Debug** shows the scheduler's live state and jumps straight to an
 | `BreakContentView.swift` | Message, countdown ring and skip / hold-to-skip controls |
 | `HeadsUpPanelController.swift` | The 60 s card: postpone pills, swipe-to-dismiss, hover behaviour |
 | `CursorCountdownController.swift` | The pill that follows the cursor for the last 10 s |
-| `StatusItemController.swift` | Menu bar icon, countdown and menu |
+| `StatusItemController.swift` | Resting-eye logo, countdown and menu |
 | `SettingsView.swift`, `BreaksControls.swift` | Settings tabs, the Now card and preset sliders |
 | `OnboardingView.swift` | First-run flow |
 | `Motion.swift` | Shared easing curves and the entrance modifier |
@@ -62,3 +62,7 @@ Everything uses stock macOS components and system materials; the only custom-dra
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Logo assets
+
+The approved resting-eye identity is used for the app icon, menu bar (with a dot when paused), welcome screen, and post-onboarding menu bar hint. `Design/approved-logo.png` preserves the selected wordmark concept; `Design/resting-eye-master.png` is the high-resolution transparent mark regenerated from it. `Assets.xcassets/LingerMark.imageset` contains template images for automatic light/dark rendering; `AppIcon.appiconset` contains all ten macOS icon slots, through 1024 pixels. Functional SF Symbols in Settings remain standard system icons.

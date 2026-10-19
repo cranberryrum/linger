@@ -132,14 +132,25 @@ private struct StepPage<Controls: View>: View {
     let title: String
     let text: String
     var staggered = false
+    var usesLogo = false
     @ViewBuilder let controls: Controls
 
     @State private var appeared = false
 
     var body: some View {
         VStack(spacing: 0) {
-            Image(systemName: symbol)
-                .font(.system(size: 64))
+            Group {
+                if usesLogo {
+                    Image("LingerMark")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 112, height: 64)
+                        .accessibilityLabel("linger")
+                } else {
+                    Image(systemName: symbol)
+                        .font(.system(size: 64))
+                }
+            }
                 .foregroundStyle(Color.accentColor)
                 .frame(height: 76)
                 .entrance(shown, delay: 0)
@@ -174,7 +185,8 @@ private struct WelcomeStep: View {
             symbol: "eye",
             title: "linger",
             text: "linger blurs your screen at regular intervals so you remember to look far away.",
-            staggered: true
+            staggered: true,
+            usesLogo: true
         ) {
             EmptyView()
         }

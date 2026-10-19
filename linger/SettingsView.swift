@@ -4,18 +4,52 @@ struct SettingsView: View {
     let scheduler: BreakScheduler
     let debug: DebugActions
 
-    var body: some View {
-        TabView {
-            BreaksSettingsView(scheduler: scheduler)
-                .tabItem { Label("Breaks", systemImage: "eye") }
-            MessagesSettingsView()
-                .tabItem { Label("Messages", systemImage: "text.quote") }
-            GeneralSettingsView(showOnboarding: debug.showOnboarding)
-                .tabItem { Label("General", systemImage: "gearshape") }
-            DebugSettingsView(scheduler: scheduler, actions: debug)
-                .tabItem { Label("Debug", systemImage: "ladybug") }
+    @State private var selection: SettingsSection? = .breaks
+
+    private enum SettingsSection: String, CaseIterable, Identifiable {
+        case breaks = "Breaks", messages = "Messages", general = "General", debug = "Debug"
+
+        var id: Self { self }
+        var symbol: String {
+            switch self {
+            case .breaks: "eye"
+            case .messages: "text.quote"
+            case .general: "gearshape"
+            case .debug: "ladybug"
+            }
         }
-        .frame(width: 480)
+    }
+
+    var body: some View {
+        NavigationSplitView {
+            List(SettingsSection.allCases, selection: $selection) { section in
+                Label(section.rawValue, systemImage: section.symbol)
+                    .tag(section)
+            }
+            .listStyle(.sidebar)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                AuthorRow()
+                    .padding(12)
+            }
+            .navigationTitle("linger")
+            .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
+        } detail: {
+            Group {
+                switch selection ?? .breaks {
+                case .breaks:
+                    BreaksSettingsView(scheduler: scheduler)
+                case .messages:
+                    MessagesSettingsView()
+                case .general:
+                    GeneralSettingsView(showOnboarding: debug.showOnboarding)
+                case .debug:
+                    DebugSettingsView(scheduler: scheduler, actions: debug)
+                }
+            }
+            .navigationTitle("linger")
+            .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(minWidth: 700, minHeight: 480)
     }
 }
 
@@ -28,8 +62,6 @@ struct BreaksSettingsView: View {
     @State private var preview = BreakPreviewController()
     @State private var isPreviewing = false
 
-    private static let presets = [15, 20, 30, 45, 60]
-
     var body: some View {
         Form {
             Section {
@@ -37,8 +69,8 @@ struct BreaksSettingsView: View {
             }
 
             Section {
-                PresetSlider(title: "Break every", unit: "min", range: 5...120, step: 1, presets: Self.presets, value: intervalMinutes)
-                PresetSlider(title: "Break lasts", unit: "s", range: 10...120, step: 5, presets: Self.presets, value: durationSeconds)
+                PresetSlider(title: "Break every", unit: "min", range: 5...120, step: 1, presets: [15, 20, 30, 45, 60], value: intervalMinutes)
+                PresetSlider(title: "Break lasts", unit: "s", range: 10...120, step: 5, presets: [15, 20, 30, 45, 60], value: durationSeconds)
             }
 
             Section {
@@ -61,8 +93,6 @@ struct BreaksSettingsView: View {
                 }
 
                 PreviewButton(isPreviewing: $isPreviewing, preview: preview)
-            } footer: {
-                Text("Soft tones ten seconds before a break, when it starts and ends, and when you skip one.")
             }
         }
         .formStyle(.grouped)
@@ -102,59 +132,75 @@ private struct PreviewButton: View {
 
 struct MessagesSettingsView: View {
     @State private var messages = BreakMessages.all
-    @State private var selection: BreakMessage.ID?
+    @FocusState private var focusedMessage: BreakMessage.ID?
     @State private var preview = BreakPreviewController()
     @State private var isPreviewing = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("One message is shown per break, in this order.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            List(selection: $selection) {
+        Form {
+            Section {
                 ForEach($messages) { $message in
-                    VStack(alignment: .leading, spacing: 2) {
-                        TextField("Message", text: $message.title)
-                        TextField("Sub-line (optional)", text: $message.subline)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            TextField("Message", text: $message.title)
+                                .focused($focusedMessage, equals: message.id)
+                                .accessibilityLabel("Break message")
+                            TextField("Sub-line (optional)", text: $message.subline)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("Message sub-line")
+                        }
+                        .textFieldStyle(.plain)
+                        .padding(.vertical, 4)
+
+                        Menu {
+                            Button("Move up") { move(message.id, by: -1) }
+                                .disabled(messages.first?.id == message.id)
+                            Button("Move down") { move(message.id, by: 1) }
+                                .disabled(messages.last?.id == message.id)
+                            Divider()
+                            Button("Delete message", role: .destructive) {
+                                messages.removeAll { $0.id == message.id }
+                            }
+                            .disabled(messages.count == 1)
+                        } label: {
+                            Label("Message actions", systemImage: "ellipsis")
+                        }
+                        .labelStyle(.iconOnly)
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .help("Move or delete this message")
                     }
-                    .textFieldStyle(.plain)
-                    .padding(.vertical, 4)
-                    .tag(message.id)
                 }
-                .onMove { messages.move(fromOffsets: $0, toOffset: $1) }
+            } footer: {
+                Text("One message per break, in this order.")
             }
-            .frame(height: 260)
 
-            HStack(spacing: 8) {
-                Button {
-                    let message = BreakMessage(title: "")
-                    withAnimation(Motion.easeOut(0.25)) { messages.append(message) }
-                    selection = message.id
-                } label: {
-                    Image(systemName: "plus")
+            Section {
+                HStack {
+                    Button {
+                        let message = BreakMessage(title: "")
+                        messages.append(message)
+                        focusedMessage = message.id
+                    } label: {
+                        Label("Add message", systemImage: "plus")
+                    }
+                    Spacer()
+                    PreviewButton(isPreviewing: $isPreviewing, preview: preview)
                 }
-                Button {
-                    withAnimation(Motion.easeOut(0.25)) { messages.removeAll { $0.id == selection } }
-                    selection = nil
-                } label: {
-                    Image(systemName: "minus")
-                }
-                .disabled(selection == nil || messages.count == 1)
-
-                Spacer()
-
-                PreviewButton(isPreviewing: $isPreviewing, preview: preview)
             }
         }
-        .padding(20)
+        .formStyle(.grouped)
         .onChange(of: messages) { _, newValue in BreakMessages.save(newValue) }
         .onDisappear { prune() }
     }
 
-    // Blank rows are dropped when the tab goes away, so what you see in the list is what plays.
+    private func move(_ id: BreakMessage.ID, by offset: Int) {
+        guard let index = messages.firstIndex(where: { $0.id == id }),
+              messages.indices.contains(index + offset) else { return }
+        messages.swapAt(index, index + offset)
+    }
+
     private func prune() {
         let kept = messages.filter { !$0.title.trimmingCharacters(in: .whitespaces).isEmpty }
         guard !kept.isEmpty, kept.count != messages.count else { return }
@@ -190,14 +236,38 @@ struct GeneralSettingsView: View {
                         .monospaced()
                         .foregroundStyle(.secondary)
                 }
-            } footer: {
-                Text("The shortcut is fixed in this version.")
             }
 
             Section {
                 Button("Show welcome again") { showOnboarding() }
             }
+
         }
         .formStyle(.grouped)
+    }
+}
+
+
+private struct AuthorRow: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Aditya Kolte")
+                    .font(.callout.weight(.medium))
+                Text("Product designer who builds & ships.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 16) {
+                Link("Website", destination: URL(string: "https://adityakolte.com/")!)
+                Link("Twitter", destination: URL(string: "https://x.com/adityakvlte")!)
+            }
+            .font(.callout)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
     }
 }

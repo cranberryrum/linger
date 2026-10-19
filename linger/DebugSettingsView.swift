@@ -63,8 +63,6 @@ struct DebugSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        // Taller than the window would otherwise grow to; the grouped form scrolls inside this.
-        .frame(height: 480)
         .confirmationDialog("Reset all settings and quit?", isPresented: $confirmReset) {
             Button("Reset and Quit", role: .destructive) { resetAndQuit() }
         }

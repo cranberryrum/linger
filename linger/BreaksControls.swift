@@ -10,25 +10,20 @@ struct NowCard: View {
         let seconds = Int(displayedSeconds.rounded(.up))
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(eyebrow)
-                    .font(.caption.weight(.semibold))
-                    .tracking(0.6)
-                    .textCase(.uppercase)
+                Text(statusLabel)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .contentTransition(.opacity)
                 Text(Self.clock(seconds))
                     .font(.system(size: 36, weight: .semibold))
                     .tracking(-0.7)
                     .monospacedDigit()
-                    .contentTransition(.numericText(countsDown: true))
                     .opacity(isActive ? 1 : 0.4)
                 Text(caption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .contentTransition(.opacity)
             }
-            .animation(Motion.easeOut(0.3), value: seconds)
-            .animation(Motion.easeOut(0.2), value: scheduler.state)
 
             Spacer(minLength: 0)
 
@@ -39,7 +34,7 @@ struct NowCard: View {
                     .trim(from: 0, to: progress)
                     .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                    .animation(.linear(duration: 1), value: progress)
+                    .animation(Motion.reduceMotion ? nil : .linear(duration: 1), value: progress)
                 PlayPauseButton(isRunning: isActive, action: toggle)
                     .disabled(isSuspended)
             }
@@ -82,7 +77,7 @@ struct NowCard: View {
 
     private var cycleLength: TimeInterval { scheduler.workInterval + scheduler.postponedTotal }
 
-    private var eyebrow: String {
+    private var statusLabel: String {
         switch scheduler.state {
         case .working: "Next break in"
         case .waitingForInputPause: "Starting when you pause"
@@ -132,14 +127,12 @@ struct PlayPauseButton: View {
             Image(systemName: isRunning ? "pause.fill" : "play.fill")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(.white)
-                .contentTransition(.symbolEffect(.replace))
                 .offset(x: isRunning ? 0 : 1)
                 .frame(width: 40, height: 40)
                 .background(Color.accentColor, in: Circle())
         }
         .buttonStyle(PressableStyle())
         .accessibilityLabel(isRunning ? "Pause breaks" : "Resume breaks")
-        .animation(Motion.easeOut(0.2), value: isRunning)
     }
 }
 
@@ -147,9 +140,9 @@ struct PlayPauseButton: View {
 struct PressableStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .scaleEffect(configuration.isPressed && !Motion.reduceMotion ? 0.97 : 1)
             .brightness(configuration.isPressed ? -0.06 : 0)
-            .animation(Motion.easeOut(0.12), value: configuration.isPressed)
+            .animation(Motion.reduceMotion ? nil : Motion.easeOut(0.12), value: configuration.isPressed)
     }
 }
 
@@ -163,8 +156,6 @@ struct PresetSlider: View {
     let presets: [Int]
     @Binding var value: Int
 
-    private static let knobInset: CGFloat = 10
-
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline) {
@@ -173,8 +164,6 @@ struct PresetSlider: View {
                 Text("\(value) \(unit)")
                     .fontWeight(.semibold)
                     .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .animation(Motion.easeOut(0.15), value: value)
             }
             Slider(
                 value: sliderValue,
@@ -185,8 +174,7 @@ struct PresetSlider: View {
             .accessibilityLabel(title)
             .accessibilityValue("\(value) \(unit)")
 
-            ticks
-                .frame(height: 18)
+            presetsRow
         }
         .padding(.vertical, 4)
     }
@@ -205,31 +193,22 @@ struct PresetSlider: View {
         )
     }
 
-    private var ticks: some View {
-        GeometryReader { geometry in
-            let usable = geometry.size.width - 2 * Self.knobInset
+    private var presetsRow: some View {
+        HStack(spacing: 0) {
             ForEach(presets, id: \.self) { preset in
-                let fraction = Double(preset - range.lowerBound) / Double(range.upperBound - range.lowerBound)
-                Button {
-                    withAnimation(Motion.easeOut(0.2)) { value = preset }
-                } label: {
-                    VStack(spacing: 3) {
-                        Rectangle()
-                            .fill(.tertiary)
-                            .frame(width: 1, height: 4)
-                        Text("\(preset)")
-                            .font(.system(size: 10))
-                            .monospacedDigit()
-                            .foregroundStyle(value == preset ? Color.accentColor : Color.secondary)
-                    }
-                    .padding(.horizontal, 5)
-                    .contentShape(Rectangle())
+                Button { value = preset } label: {
+                    Text("\(preset)")
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(value == preset ? Color.accentColor : Color.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 24)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .position(x: Self.knobInset + usable * fraction, y: 9)
                 .accessibilityLabel("\(preset) \(unit)")
+                .accessibilityAddTraits(value == preset ? [.isSelected] : [])
+                .help("Set to \(preset) \(unit)")
             }
         }
-        .animation(Motion.easeOut(0.15), value: value)
     }
 }

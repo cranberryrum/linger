@@ -7,9 +7,8 @@ final class StatusItemController {
     private let openSettingsAction: () -> Void
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private var hintPopover: NSPopover?
-
-    private static let eyeImage = NSImage(systemSymbolName: "eye", accessibilityDescription: "linger")
-    private static let pausedImage = NSImage(systemSymbolName: "eye.slash", accessibilityDescription: "linger")
+    private let activeIcon = StatusItemController.makeIcon(paused: false)
+    private let pausedIcon = StatusItemController.makeIcon(paused: true)
 
     private let statusLine = NSMenuItem()
     private let takeBreakItem = NSMenuItem(title: "Take a Break Now", action: #selector(takeBreakNow), keyEquivalent: "")
@@ -51,6 +50,20 @@ final class StatusItemController {
         statusItem.menu = menu
     }
 
+    private static func makeIcon(paused: Bool) -> NSImage {
+        let image = NSImage(size: NSSize(width: 20, height: 18), flipped: false) { _ in
+            NSImage(named: "LingerMark")?.draw(in: NSRect(x: 1, y: 5, width: 18, height: 8.5))
+            if paused {
+                NSColor.black.setFill()
+                NSBezierPath(ovalIn: NSRect(x: 15, y: 1, width: 3, height: 3)).fill()
+            }
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = paused ? "linger, paused" : "linger"
+        return image
+    }
+
     private func observe() {
         withObservationTracking {
             render()
@@ -83,8 +96,11 @@ final class StatusItemController {
 
         // This runs every second; in minutes mode the title changes once a minute, and the same
         // string would still make the menu bar re-layout and redraw.
-        let image = paused ? Self.pausedImage : Self.eyeImage
-        if button.image !== image { button.image = image }
+        let image = paused ? pausedIcon : activeIcon
+        if button.image !== image {
+            button.image = image
+            button.setAccessibilityLabel(paused ? "linger, paused" : "linger")
+        }
         if button.title != title { button.title = title }
         if statusLine.title != status { statusLine.title = status }
 
@@ -146,8 +162,11 @@ private struct RunningHintView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "eye")
-                .font(.title3)
+            Image("LingerMark")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 22, height: 18)
+                .accessibilityHidden(true)
                 .foregroundStyle(Color.accentColor)
             VStack(alignment: .leading, spacing: 3) {
                 Text("linger is running here")
