@@ -6,8 +6,8 @@ final class HeadsUpPanelController {
     private static let cornerRadius: CGFloat = 22
     private static let margin: CGFloat = 16
     private static let autoDismiss: TimeInterval = 10
-    private static let dismissAfterHover: TimeInterval = 3
-    private static let confirmationHold: TimeInterval = 4
+    // Once touched, the panel stays until the user has left it alone this long.
+    private static let dismissAfterActivity: TimeInterval = 4
     private static let swipeDistance: CGFloat = 60
     private static let swipeVelocity: CGFloat = 500
 
@@ -15,7 +15,8 @@ final class HeadsUpPanelController {
     private var panel: NSPanel?
     private var resting: NSRect = .zero
     private var dismissTask: Task<Void, Never>?
-    private var confirming = false
+    private var hovering = false
+    private var postponedThisShowing = false
 
     private var dragStartX: CGFloat?
     private var lastDragSample: (x: CGFloat, time: TimeInterval)?
@@ -55,6 +56,7 @@ final class HeadsUpPanelController {
         panel.isReleasedWhenClosed = false
         panel.appearance = NSAppearance(named: .darkAqua)
         panel.contentView = makeContent()
+        panel.invalidateShadow()
 
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
         let area = screen?.visibleFrame ?? .zero
@@ -90,7 +92,8 @@ final class HeadsUpPanelController {
         dismissTask?.cancel()
         dismissTask = nil
         dragStartX = nil
-        confirming = false
+        hovering = false
+        postponedThisShowing = false
 
         let exit = swipedAway
             ? panel.frame.offsetBy(dx: Motion.reduceMotion ? 0 : 80, dy: 0)
@@ -115,20 +118,30 @@ final class HeadsUpPanelController {
         }
     }
 
-    // After a postpone the panel stays just long enough to read the confirmation, then leaves on its own.
+    // The first postpone on a showing counts toward the per-cycle limit; later clicks add to it.
     private func postpone(by amount: TimeInterval) {
-        scheduler.postpone(by: amount)
-        confirming = true
-        scheduleDismiss(after: Self.confirmationHold)
+        if postponedThisShowing {
+            scheduler.extendPostpone(by: amount)
+        } else {
+            scheduler.postpone(by: amount)
+            postponedThisShowing = true
+        }
+        activity()
     }
 
     private func hoverChanged(_ hovering: Bool) {
-        guard !confirming else { return }
+        self.hovering = hovering
+        activity()
+    }
+
+    // Hovering holds the panel open; any other interaction restarts the idle countdown.
+    private func activity() {
+        guard panel != nil, dragStartX == nil else { return }
         if hovering {
             dismissTask?.cancel()
             dismissTask = nil
-        } else if panel != nil, dragStartX == nil {
-            scheduleDismiss(after: Self.dismissAfterHover)
+        } else {
+            scheduleDismiss(after: Self.dismissAfterActivity)
         }
     }
 
@@ -171,7 +184,7 @@ final class HeadsUpPanelController {
             panel.animator().alphaValue = 1
             panel.animator().setFrame(resting, display: true)
         }
-        scheduleDismiss(after: Self.dismissAfterHover)
+        activity()
     }
 
     // MARK: Content
@@ -182,6 +195,8 @@ final class HeadsUpPanelController {
         backdrop.material = .hudWindow
         backdrop.blendingMode = .behindWindow
         backdrop.state = .active
+        // Behind-window blur ignores layer masking and fills the whole window rect; only maskImage clips it.
+        backdrop.maskImage = Self.roundedMask(size: Self.size, radius: Self.cornerRadius)
         backdrop.wantsLayer = true
         backdrop.layer?.cornerRadius = Self.cornerRadius
         backdrop.layer?.cornerCurve = .continuous
@@ -213,6 +228,20 @@ final class HeadsUpPanelController {
         backdrop.addSubview(hosting)
         return backdrop
     }
+
+    // Rendered from a layer so the mask uses the same continuous corner curve as the border.
+    private static func roundedMask(size: NSSize, radius: CGFloat) -> NSImage {
+        NSImage(size: size, flipped: false) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            let shape = CALayer()
+            shape.frame = rect
+            shape.cornerRadius = radius
+            shape.cornerCurve = .continuous
+            shape.backgroundColor = NSColor.black.cgColor
+            shape.render(in: context)
+            return true
+        }
+    }
 }
 
 private struct HeadsUpView: View {
@@ -231,9 +260,25 @@ private struct HeadsUpView: View {
     var body: some View {
         let seconds = Int(scheduler.remaining.rounded(.up))
         VStack(alignment: .leading, spacing: 0) {
-            Text("Break starting in")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.92))
+            HStack(spacing: 8) {
+                Text("Break starting in")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.92))
+                if let postponedBy {
+                    Text("+\(Int(postponedBy / 60)) min")
+                        .font(.system(size: 12, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(.white.opacity(0.7))
+                        .contentTransition(.numericText())
+                        .padding(.horizontal, 7)
+                        .frame(height: 20)
+                        .background(.white.opacity(0.1), in: Capsule())
+                        .transition(.opacity)
+                }
+            }
+            .frame(height: 20)
+            .animation(Motion.easeOut(0.2), value: postponedBy)
+
             Text("\(seconds / 60):\(String(format: "%02d", seconds % 60))")
                 .font(.system(size: 34, weight: .bold))
                 .tracking(-0.7)
@@ -245,30 +290,18 @@ private struct HeadsUpView: View {
 
             Spacer(minLength: 12)
 
-            ZStack(alignment: .leading) {
-                if let postponedBy {
-                    Text("Postponed \(Int(postponedBy / 60)) min · next break at \(scheduler.nextBreakAt.formatted(date: .omitted, time: .shortened))")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .lineLimit(1)
-                        .frame(height: 30, alignment: .leading)
-                        .transition(.opacity)
-                } else {
-                    HStack(spacing: 6) {
-                        Button("Start now", action: onStartNow)
-                            .buttonStyle(PillButtonStyle(prominent: true))
-                        Spacer(minLength: 8)
-                        ForEach(Self.postponeMinutes, id: \.self) { minutes in
-                            Button("+\(minutes) min") { postpone(TimeInterval(minutes * 60)) }
-                                .buttonStyle(PillButtonStyle(prominent: false))
-                        }
-                        .disabled(!scheduler.canPostpone)
-                        .help("Postpone the break, up to three times per cycle")
-                    }
-                    .transition(.opacity)
+            HStack(spacing: 6) {
+                Button("Start now", action: onStartNow)
+                    .buttonStyle(PillButtonStyle(prominent: true))
+                Spacer(minLength: 8)
+                ForEach(Self.postponeMinutes, id: \.self) { minutes in
+                    Button("+\(minutes) min") { postpone(TimeInterval(minutes * 60)) }
+                        .buttonStyle(PillButtonStyle(prominent: false))
                 }
+                // Once this card has postponed, further clicks add to it rather than using up another.
+                .disabled(postponedBy == nil && !scheduler.canPostpone)
+                .help("Push the break back; click again to add more")
             }
-            .animation(Motion.easeOut(0.2), value: postponedBy)
         }
         .padding(20)
         .frame(width: size.width, height: size.height, alignment: .topLeading)
@@ -282,8 +315,7 @@ private struct HeadsUpView: View {
     }
 
     private func postpone(_ amount: TimeInterval) {
-        guard postponedBy == nil else { return }
-        postponedBy = amount
+        postponedBy = (postponedBy ?? 0) + amount
         onPostpone(amount)
     }
 }

@@ -105,6 +105,19 @@ final class BreakScheduler {
         log.debug("Postponed \(Int(amount)) s (\(self.postponeCount)/\(Self.maxPostpones)), next break at \(self.nextBreakAt)")
     }
 
+    // Further clicks on the same heads-up stretch the postpone already counted instead of using up another.
+    func extendPostpone(by amount: TimeInterval) {
+        guard postponeCount > 0 else { return }
+        switch state {
+        case .working, .waitingForInputPause: break
+        default: return
+        }
+        postponedTotal += amount
+        recomputeNextBreak()
+        state = .working
+        log.debug("Extended postpone by \(Int(amount)) s, next break at \(self.nextBreakAt)")
+    }
+
     func skipBreak() {
         guard case .onBreak = state else { return }
         log.debug("Break skipped")
