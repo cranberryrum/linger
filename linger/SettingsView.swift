@@ -367,6 +367,7 @@ struct GeneralSettingsView: View {
             Section {
                 LaunchAtLoginRow(model: PermissionsModel.shared)
                 CalendarRow(model: MeetingCalendar.shared)
+                CalendarChoiceRows(model: MeetingCalendar.shared)
             }
 
             Section {
@@ -403,6 +404,37 @@ struct GeneralSettingsView: View {
     }
 }
 
+
+// Which account's calendar linger reads, and which of its calendars: only once access is granted.
+private struct CalendarChoiceRows: View {
+    @Bindable var model: MeetingCalendar
+
+    private static let internetAccounts = URL(string: "x-apple.systempreferences:com.apple.Internet-Accounts-Settings.extension")!
+
+    var body: some View {
+        if model.isOn, model.status == .allowed || model.status == .needsAccount {
+            Picker("Account", selection: $model.accountID) {
+                if model.accountID == nil {
+                    Text("Choose…").tag(String?.none)
+                }
+                ForEach(model.accounts) { account in
+                    Text(account.title).tag(Optional(account.id))
+                }
+            }
+            if let accountID = model.accountID {
+                Picker("Calendar", selection: $model.calendarID) {
+                    Text("All calendars").tag(String?.none)
+                    ForEach(model.calendars(in: accountID)) { calendar in
+                        Text(calendar.title).tag(Optional(calendar.id))
+                    }
+                }
+            }
+            // linger sees only accounts added to macOS; a work Google account usually isn't yet.
+            Link("Missing an account? Add it in Internet Accounts", destination: Self.internetAccounts)
+                .font(.callout)
+        }
+    }
+}
 
 private struct AuthorRow: View {
     var body: some View {

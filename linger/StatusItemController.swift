@@ -143,11 +143,8 @@ final class StatusItemController {
     }
 
     private static func meetingHoldDescription(_ scheduler: BreakScheduler) -> String? {
-        switch scheduler.meeting {
-        case .call: return "Break after your call"
-        case .presenting: return "Break after your presentation"
-        case nil: return scheduler.manualMeetingHoldUntil == nil ? nil : "Break after your meeting"
-        }
+        if let meeting = scheduler.meeting { return "Break after \(meeting.title)" }
+        return scheduler.manualMeetingHoldUntil == nil ? nil : "Break after your meeting"
     }
 
     // Shown once after onboarding so the user knows where the app went.

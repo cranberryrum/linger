@@ -233,7 +233,7 @@ final class HeadsUpPanelController {
             onPostpone: { [weak self] amount in self?.postpone(by: amount) },
             longBreak: scheduler.nextBreakIsLong ? scheduler.longBreakDuration : nil,
             meeting: meeting,
-            calendarReadable: MeetingCalendar.shared.canRead,
+            calendarStatus: MeetingCalendar.shared.status,
             onAfterMeeting: { [weak self] in
                 if let meeting { self?.holdForMeeting(meeting) }
             },
@@ -271,7 +271,7 @@ private struct HeadsUpView: View {
     // The coming break's length when it's a long one.
     let longBreak: TimeInterval?
     let meeting: CalendarMeeting?
-    let calendarReadable: Bool
+    let calendarStatus: MeetingCalendar.Status
     let onAfterMeeting: () -> Void
     let onHover: (Bool) -> Void
     let onDragChanged: () -> Void
@@ -412,9 +412,11 @@ private struct HeadsUpView: View {
 
     private var meetingHelp: String {
         if let meeting { return "Hold the break until \(meeting.title) ends at \(meeting.end.formatted(date: .omitted, time: .shortened))" }
-        return calendarReadable
-            ? "No meeting on your calendar right now"
-            : "Turn on Calendar in linger Settings › General to use this"
+        return switch calendarStatus {
+        case .allowed: "No meeting on your calendar right now"
+        case .needsAccount: "Choose a calendar in linger Settings › General to use this"
+        case .off, .denied: "Turn on Calendar in linger Settings › General to use this"
+        }
     }
 
     // A meeting that hasn't started yet carries its start time, so it's clear which one is meant.

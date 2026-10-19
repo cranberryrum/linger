@@ -43,7 +43,7 @@ struct DebugSettingsView: View {
                 Button("Sleep 5 s, wake (resumes where it left off)") { scheduler.debugSimulateSleep(gap: 5) }
                 Button("Sleep 60 s, wake (counts as a break taken)") { scheduler.debugSimulateSleep(gap: 60) }
                 Button("Sleep 5 min, wake (counts as a long break too)") { scheduler.debugSimulateSleep(gap: 5 * 60) }
-                Button("Call for 45 s (break waits, heads-up follows)") { scheduler.debugSimulateMeeting(for: 45) }
+                Button("Meeting for 45 s (break waits, heads-up follows)") { scheduler.debugSimulateMeeting(for: 45) }
                 Button("Postpone 5 min") { scheduler.postpone(by: 5 * 60) }
                     .disabled(!scheduler.canPostpone)
                 if scheduler.isPaused {
@@ -106,11 +106,10 @@ struct DebugSettingsView: View {
     }
 
     private var meetingDescription: String {
-        switch scheduler.meeting {
-        case .call(let app): "on a call (\(app))"
-        case .presenting(let app): "presenting (\(app))"
-        case nil: scheduler.manualMeetingHoldUntil.map { "held until meeting ends (cap \($0.formatted(date: .omitted, time: .shortened)))" } ?? "none"
+        if let meeting = scheduler.meeting {
+            return "\(meeting.title), until \(meeting.end.formatted(date: .omitted, time: .shortened))"
         }
+        return scheduler.manualMeetingHoldUntil.map { "held until \($0.formatted(date: .omitted, time: .shortened))" } ?? "none"
     }
 
     // Tik tik → start → end, with the real gaps compressed, to judge the palette as a whole.

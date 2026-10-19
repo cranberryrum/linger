@@ -54,6 +54,8 @@ enum DefaultsKey {
     static let menuBarCountdown = "menuBarCountdown"
     static let launchAtLoginOn = "launchAtLoginOn"
     static let calendarOn = "calendarOn"
+    static let calendarAccount = "calendarAccount"
+    static let calendarID = "calendarID"
     static let workHoursOn = "workHoursOn"
     static let workHours = "workHours"
     static let longBreaksOn = "longBreaksOn"

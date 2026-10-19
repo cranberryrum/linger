@@ -40,7 +40,7 @@ final class BreakScheduler {
     private(set) var postponeCount = 0
     private(set) var postponedTotal: TimeInterval = 0
     // A call or presentation linger has detected; while set, the break waits at the heads-up line.
-    private(set) var meeting: MeetingDetector.Activity?
+    private(set) var meeting: CalendarMeeting?
     // The user said "after meeting" on the heads-up.
     private(set) var manualMeetingHoldUntil: Date?
     private(set) var scheduleOverride: ScheduleOverride?
@@ -128,8 +128,8 @@ final class BreakScheduler {
     @ObservationIgnored private var finalCountdownFired = false
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var observers: [any NSObjectProtocol] = []
-    @ObservationIgnored private let meetingDetector = MeetingDetector()
-    @ObservationIgnored private var manualHoldSawMeeting = false
+    @ObservationIgnored private var lastMeetingCheck: Date = .distantPast
+    @ObservationIgnored private var debugMeetingUntil: Date?
     @ObservationIgnored private var pausedAt: Date?
     // Whether breaks should run, and until when that answer holds; nil means "until something changes".
     @ObservationIgnored private var workingCache: (working: Bool, until: Date?)?
@@ -197,14 +197,13 @@ final class BreakScheduler {
         log.debug("Extended postpone by \(Int(amount)) s, next break at \(self.nextBreakAt)")
     }
 
-    // Holds the break until the calendar meeting ends, or earlier if a call linger saw has ended.
+    // Holds the break until the calendar meeting ends.
     func holdUntilMeetingEnds(_ end: Date) {
         switch state {
         case .working, .waitingForInputPause: break
         default: return
         }
         manualMeetingHoldUntil = min(end, Date().addingTimeInterval(Self.manualMeetingHoldCap))
-        manualHoldSawMeeting = meeting != nil
         state = .working
         holdAtHeadsUpLine(now: Date())
         log.debug("Holding breaks until the meeting ends")
@@ -371,7 +370,6 @@ final class BreakScheduler {
             guard !schedule.working else { return }
             // A meeting hold that crosses the end of the day just ends; nothing waits for morning.
             manualMeetingHoldUntil = nil
-            manualHoldSawMeeting = false
             state = .offHours(until: schedule.until)
             remaining = 0
             log.debug("Off hours until \(String(describing: schedule.until))")
@@ -398,7 +396,7 @@ final class BreakScheduler {
         updateMeeting(now: now)
         switch state {
         case .working:
-            // On a call nobody touches the keyboard, but the eyes are still on the screen.
+            // In a meeting nobody touches the keyboard, but the eyes are usually still on the screen.
             let idle = secondsSinceLastInput
             if meeting == nil, idle >= Self.idleThreshold {
                 // Being away counts as a break; keep the full interval ahead of the user. Long
@@ -459,25 +457,41 @@ final class BreakScheduler {
 
     // MARK: Meetings
 
+    // The calendar is the only source: a meeting from the chosen calendar that's on right now.
+    private static let meetingCheckInterval: TimeInterval = 15
+
     private func updateMeeting(now: Date) {
         switch state {
         case .working, .waitingForInputPause:
-            meetingDetector.update(now: now)
+            break
         default:
-            // Paused, asleep or on a break: nothing to hold, and no reason to query the system.
+            // Paused, asleep, resting or on a break: nothing to hold, and no reason to read the calendar.
             if meeting != nil { meeting = nil }
             return
         }
-        let detected = meetingDetector.activity
-        if detected != meeting { meeting = detected }
 
-        guard let until = manualMeetingHoldUntil else { return }
-        if detected != nil {
-            manualHoldSawMeeting = true
-        } else if manualHoldSawMeeting || now >= until {
+        if let until = manualMeetingHoldUntil, now >= until {
             log.debug("Meeting hold over")
             manualMeetingHoldUntil = nil
-            manualHoldSawMeeting = false
+        }
+
+        if let until = debugMeetingUntil {
+            if now < until {
+                if meeting == nil { meeting = CalendarMeeting(title: "Simulated meeting", start: now, end: until) }
+                return
+            }
+            debugMeetingUntil = nil
+            lastMeetingCheck = .distantPast
+        }
+
+        // A meeting's end is known, so it ends exactly on time between calendar reads.
+        if let current = meeting, now >= current.end { meeting = nil }
+        guard now.timeIntervalSince(lastMeetingCheck) >= Self.meetingCheckInterval else { return }
+        lastMeetingCheck = now
+        let found = MeetingCalendar.shared.meetingInProgress(now: now)
+        if found != meeting {
+            log.debug("Meeting: \(found?.title ?? "none")")
+            meeting = found
         }
     }
 
@@ -535,7 +549,7 @@ final class BreakScheduler {
     }
 
     func debugSimulateMeeting(for seconds: TimeInterval) {
-        meetingDetector.debugSimulate(for: seconds)
+        debugMeetingUntil = Date().addingTimeInterval(seconds)
         updateMeeting(now: Date())
     }
 
