@@ -19,6 +19,8 @@ enum Motion {
     }
 
     static var overlayIn: TimeInterval { reduceMotion ? 0.25 : 0.9 }
+    // A long break arrives a little more slowly; same curve, same everything else.
+    static var longOverlayIn: TimeInterval { reduceMotion ? 0.25 : 1.4 }
     static var overlayOut: TimeInterval { reduceMotion ? 0.2 : 0.45 }
     // How long the break text stays at full strength before receding so the eyes can leave.
     static let overlaySettle: TimeInterval = 4

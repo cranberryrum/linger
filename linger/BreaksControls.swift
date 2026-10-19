@@ -47,7 +47,7 @@ struct NowCard: View {
     private var isActive: Bool {
         switch scheduler.state {
         case .working, .waitingForInputPause, .onBreak: true
-        case .paused, .suspended: false
+        case .paused, .suspended, .offHours: false
         }
     }
 
@@ -58,7 +58,7 @@ struct NowCard: View {
 
     private var displayedSeconds: TimeInterval {
         switch scheduler.state {
-        case .paused: scheduler.workInterval
+        case .paused, .offHours: scheduler.workInterval
         case .suspended(let remaining, _): remaining
         default: scheduler.remaining
         }
@@ -67,10 +67,10 @@ struct NowCard: View {
     private var progress: Double {
         switch scheduler.state {
         case .onBreak:
-            scheduler.breakDuration > 0 ? scheduler.remaining / scheduler.breakDuration : 0
+            scheduler.currentBreakDuration > 0 ? scheduler.remaining / scheduler.currentBreakDuration : 0
         case .working, .waitingForInputPause:
             cycleLength > 0 ? scheduler.remaining / cycleLength : 0
-        case .paused, .suspended:
+        case .paused, .suspended, .offHours:
             0
         }
     }
@@ -83,24 +83,31 @@ struct NowCard: View {
         case .waitingForInputPause: "Starting when you pause"
         case .onBreak: "On a break"
         case .paused, .suspended: "Paused"
+        case .offHours: "Resting"
         }
     }
 
     private var caption: String {
         switch scheduler.state {
         case .working, .waitingForInputPause:
-            "Break lasts \(Int(scheduler.breakDuration)) s · at \(Self.time(scheduler.nextBreakAt))"
+            scheduler.nextBreakIsLong
+                ? "Long break · \(Int(scheduler.longBreakDuration / 60)) min · at \(Self.time(scheduler.nextBreakAt))"
+                : "Break lasts \(Int(scheduler.breakDuration)) s · at \(Self.time(scheduler.nextBreakAt))"
         case .onBreak(let endsAt):
             "Back at \(Self.time(endsAt))"
         case .paused(let until):
             until == .distantFuture ? "Press play to start again" : "Resumes at \(Self.time(until))"
         case .suspended:
             "Resumes when the screen wakes"
+        case .offHours(let until):
+            until.map { "Breaks start at \(BreakScheduler.restTime($0))" } ?? "Press play to start breaks"
         }
     }
 
     private func toggle() {
-        if isActive {
+        if scheduler.isOffHours {
+            scheduler.startBreaksNow()
+        } else if isActive {
             scheduler.pauseIndefinitely()
         } else {
             scheduler.resume()

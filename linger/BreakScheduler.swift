@@ -12,6 +12,15 @@ final class BreakScheduler {
         case onBreak(endsAt: Date)
         case paused(until: Date)
         case suspended(remaining: TimeInterval, at: Date)
+        // Outside work hours. Not a pause: nobody asked for it, and it ends on its own. Nil when no
+        // day is selected, so there is no next start.
+        case offHours(until: Date?)
+    }
+
+    // "Start Breaks Now" off hours (working) or a Debug jump (either way), until a moment.
+    struct ScheduleOverride: Equatable {
+        let working: Bool
+        let until: Date
     }
 
     static let idleThreshold: TimeInterval = 180
@@ -34,6 +43,11 @@ final class BreakScheduler {
     private(set) var meeting: MeetingDetector.Activity?
     // The user said "after meeting" on the heads-up.
     private(set) var manualMeetingHoldUntil: Date?
+    private(set) var scheduleOverride: ScheduleOverride?
+    private(set) var longBreaks = LongBreakCounter()
+    // The break on screen now; long breaks run longer than `breakDuration`.
+    private(set) var currentBreakIsLong = false
+    private(set) var currentBreakDuration: TimeInterval = 0
 
     var workInterval: TimeInterval {
         didSet {
@@ -52,6 +66,38 @@ final class BreakScheduler {
         didSet { UserDefaults.standard.set(breakDuration, forKey: DefaultsKey.breakDurationSec) }
     }
 
+    var workHoursOn: Bool {
+        didSet {
+            UserDefaults.standard.set(workHoursOn, forKey: DefaultsKey.workHoursOn)
+            scheduleChanged()
+        }
+    }
+
+    var workHours: WorkHours {
+        didSet {
+            workHours.store()
+            scheduleChanged()
+        }
+    }
+
+    var longBreaksOn: Bool {
+        didSet {
+            UserDefaults.standard.set(longBreaksOn, forKey: DefaultsKey.longBreaksOn)
+            // Counting starts when the feature does, not from breaks taken while it was off.
+            longBreaks.reset()
+        }
+    }
+
+    var longBreakEvery: Int {
+        didSet { UserDefaults.standard.set(longBreakEvery, forKey: DefaultsKey.longBreakEvery) }
+    }
+
+    var longBreakDuration: TimeInterval {
+        didSet { UserDefaults.standard.set(longBreakDuration, forKey: DefaultsKey.longBreakDurationSec) }
+    }
+
+    var nextBreakIsLong: Bool { longBreaksOn && longBreaks.nextIsLong(every: longBreakEvery) }
+
     var canPostpone: Bool {
         switch state {
         case .working, .waitingForInputPause: postponeCount < Self.maxPostpones
@@ -66,6 +112,11 @@ final class BreakScheduler {
 
     var isRunning: Bool { timer != nil }
 
+    var isOffHours: Bool {
+        if case .offHours = state { return true }
+        return false
+    }
+
     var isHoldingForMeeting: Bool { meeting != nil || manualMeetingHoldUntil != nil }
 
     @ObservationIgnored var onBreakCompleted: (() -> Void)?
@@ -79,16 +130,25 @@ final class BreakScheduler {
     @ObservationIgnored private var observers: [any NSObjectProtocol] = []
     @ObservationIgnored private let meetingDetector = MeetingDetector()
     @ObservationIgnored private var manualHoldSawMeeting = false
+    @ObservationIgnored private var pausedAt: Date?
+    // Whether breaks should run, and until when that answer holds; nil means "until something changes".
+    @ObservationIgnored private var workingCache: (working: Bool, until: Date?)?
 
     init() {
         let defaults = UserDefaults.standard
         workInterval = defaults.double(forKey: DefaultsKey.workIntervalSec)
         breakDuration = defaults.double(forKey: DefaultsKey.breakDurationSec)
+        workHoursOn = defaults.bool(forKey: DefaultsKey.workHoursOn)
+        workHours = .stored
+        longBreaksOn = defaults.bool(forKey: DefaultsKey.longBreaksOn)
+        longBreakEvery = defaults.integer(forKey: DefaultsKey.longBreakEvery)
+        longBreakDuration = defaults.double(forKey: DefaultsKey.longBreakDurationSec)
     }
 
     func start() {
         guard timer == nil else { return }
         restartInterval()
+        applyWorkHours(now: Date())
         observeSystemEvents()
 
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
@@ -103,9 +163,16 @@ final class BreakScheduler {
 
     // MARK: Actions
 
-    func startBreakNow() {
+    // Nil takes the next break as scheduled, long if one is due.
+    func startBreakNow(long: Bool? = nil) {
         if case .onBreak = state { return }
-        beginBreak()
+        beginBreak(long: long)
+    }
+
+    // Off hours, breaks run until the small hours; then the schedule takes back over.
+    func startBreaksNow() {
+        let now = Date()
+        setOverride(ScheduleOverride(working: true, until: WorkHours.nextOverrideEnd(after: now)), now: now)
     }
 
     func postpone(by amount: TimeInterval) {
@@ -160,8 +227,13 @@ final class BreakScheduler {
     }
 
     func pauseUntilTomorrow() {
+        let now = Date()
+        if workHoursOn, let start = workHours.nextStart(after: now) {
+            pause(until: start)
+            return
+        }
         let sixAM = DateComponents(hour: 6, minute: 0)
-        guard let until = Calendar.current.nextDate(after: Date(), matching: sixAM, matchingPolicy: .nextTime) else { return }
+        guard let until = Calendar.current.nextDate(after: now, matching: sixAM, matchingPolicy: .nextTime) else { return }
         pause(until: until)
     }
 
@@ -172,7 +244,10 @@ final class BreakScheduler {
     func resume() {
         guard isPaused else { return }
         log.debug("Resumed")
+        if let pausedAt { creditAway(Date().timeIntervalSince(pausedAt)) }
+        pausedAt = nil
         restartInterval()
+        applyWorkHours(now: Date())
     }
 
     static func pauseDescription(until: Date) -> String {
@@ -181,9 +256,23 @@ final class BreakScheduler {
         return Calendar.current.isDateInToday(until) ? "Paused until \(time)" : "Paused until tomorrow, \(time)"
     }
 
+    // "9:00" when the next start is today or tomorrow, "Mon 9:00" when it's further off.
+    static func restTime(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) || calendar.isDateInTomorrow(date) {
+            return date.formatted(date: .omitted, time: .shortened)
+        }
+        return date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+    }
+
+    static func restDescription(until: Date?) -> String {
+        until.map { "Resting until \(restTime($0))" } ?? "Resting"
+    }
+
     // MARK: Cycle
 
     private func pause(until: Date) {
+        if pausedAt == nil { pausedAt = Date() }
         state = .paused(until: until)
         remaining = 0
         log.debug("Paused until \(until)")
@@ -209,31 +298,112 @@ final class BreakScheduler {
         workInterval + postponedTotal
     }
 
-    private func beginBreak() {
+    private func beginBreak(long: Bool? = nil) {
         // Taking a break, by choice or on schedule, settles any "after meeting" promise.
         manualMeetingHoldUntil = nil
-        let endsAt = Date().addingTimeInterval(breakDuration)
+        currentBreakIsLong = long ?? nextBreakIsLong
+        currentBreakDuration = currentBreakIsLong ? longBreakDuration : breakDuration
+        let endsAt = Date().addingTimeInterval(currentBreakDuration)
         state = .onBreak(endsAt: endsAt)
-        remaining = breakDuration
-        log.debug("Break started, ends at \(endsAt)")
+        remaining = currentBreakDuration
+        log.debug("\(self.currentBreakIsLong ? "Long break" : "Break") started, ends at \(endsAt)")
     }
 
     private func endBreak() {
         log.debug("Break ended")
+        breakTaken()
         restartInterval()
         onBreakCompleted?()
+        applyWorkHours(now: Date())
     }
+
+    // MARK: Long breaks
+
+    private func breakTaken() {
+        guard longBreaksOn else { return }
+        longBreaks.breakCompleted(long: currentBreakIsLong)
+    }
+
+    private func creditAway(_ seconds: TimeInterval) {
+        guard longBreaksOn else { return }
+        longBreaks.creditAway(seconds, longDuration: longBreakDuration)
+    }
+
+    // MARK: Work hours
+
+    private func scheduleChanged() {
+        workingCache = nil
+        // Not before start(): the first evaluation happens there.
+        guard timer != nil else { return }
+        applyWorkHours(now: Date())
+    }
+
+    private func setOverride(_ override: ScheduleOverride?, now: Date) {
+        scheduleOverride = override
+        workingCache = nil
+        applyWorkHours(now: now)
+    }
+
+    private func shouldRunBreaks(at now: Date) -> (working: Bool, until: Date?) {
+        if let cache = workingCache, cache.until.map({ now < $0 }) ?? true { return cache }
+        if let override = scheduleOverride, now >= override.until { scheduleOverride = nil }
+
+        let answer: (working: Bool, until: Date?)
+        if let override = scheduleOverride {
+            answer = (override.working, override.until)
+        } else if !workHoursOn {
+            answer = (true, nil)
+        } else if workHours.isWorking(at: now) {
+            answer = (true, workHours.nextEnd(after: now))
+        } else {
+            answer = (false, workHours.nextStart(after: now))
+        }
+        workingCache = answer
+        return answer
+    }
+
+    // Every work-hours boundary rule lives here. Runs each tick (cheaply, from the cache) and
+    // whenever something that could move the boundary changes.
+    private func applyWorkHours(now: Date) {
+        let schedule = shouldRunBreaks(at: now)
+        switch state {
+        case .working, .waitingForInputPause:
+            guard !schedule.working else { return }
+            // A meeting hold that crosses the end of the day just ends; nothing waits for morning.
+            manualMeetingHoldUntil = nil
+            manualHoldSawMeeting = false
+            state = .offHours(until: schedule.until)
+            remaining = 0
+            log.debug("Off hours until \(String(describing: schedule.until))")
+        case .offHours(let until):
+            if schedule.working {
+                // A new working day starts fresh: a full interval, and long-break counting from zero.
+                longBreaks.reset()
+                restartInterval()
+            } else if until != schedule.until {
+                state = .offHours(until: schedule.until)
+            }
+        case .onBreak, .paused, .suspended:
+            // A break finishes, a pause wins while it lasts, sleep is handled on wake.
+            break
+        }
+    }
+
 
     // MARK: Tick
 
     private func tick() {
         let now = Date()
+        applyWorkHours(now: now)
         updateMeeting(now: now)
         switch state {
         case .working:
             // On a call nobody touches the keyboard, but the eyes are still on the screen.
-            if meeting == nil, secondsSinceLastInput >= Self.idleThreshold {
-                // Being away counts as a break; keep the full interval ahead of the user.
+            let idle = secondsSinceLastInput
+            if meeting == nil, idle >= Self.idleThreshold {
+                // Being away counts as a break; keep the full interval ahead of the user. Long
+                // enough away, it counts as a long one too.
+                creditAway(idle)
                 cycleStartedAt = now
                 postponeCount = 0
                 postponedTotal = 0
@@ -282,7 +452,7 @@ final class BreakScheduler {
         case .paused(let until):
             if now >= until { resume() }
 
-        case .suspended:
+        case .suspended, .offHours:
             break
         }
     }
@@ -329,13 +499,39 @@ final class BreakScheduler {
     // Moves the current cycle so the next break is `seconds` away, keeping postpones.
     func debugSetRemaining(_ seconds: TimeInterval) {
         switch state {
-        case .working, .waitingForInputPause, .paused, .suspended:
+        case .working, .waitingForInputPause, .paused, .suspended, .offHours:
             cycleStartedAt = Date().addingTimeInterval(seconds - scheduledLength)
             recomputeNextBreak()
             state = .working
         case .onBreak:
             return
         }
+    }
+
+    func debugForceNextLong() {
+        longBreaks.forceNextLong = true
+    }
+
+    // Both jumps act as if the boundary had just been crossed, and last until the next real one.
+    func debugJumpToEndOfWorkHours() {
+        let now = Date()
+        let until = workHours.nextStart(after: now) ?? now.addingTimeInterval(8 * 60 * 60)
+        setOverride(ScheduleOverride(working: false, until: until), now: now)
+    }
+
+    func debugJumpToStartOfWorkHours() {
+        let now = Date()
+        let until = workHours.nextEnd(after: now) ?? now.addingTimeInterval(8 * 60 * 60)
+        let wasOffHours = isOffHours
+        setOverride(ScheduleOverride(working: true, until: until), now: now)
+        guard !wasOffHours, state == .working || isWaitingForInputPause else { return }
+        longBreaks.reset()
+        restartInterval()
+    }
+
+    private var isWaitingForInputPause: Bool {
+        if case .waitingForInputPause = state { return true }
+        return false
     }
 
     func debugSimulateMeeting(for seconds: TimeInterval) {
@@ -392,8 +588,9 @@ final class BreakScheduler {
             state = .suspended(remaining: 0, at: now)
         case .onBreak:
             // The screen is going away anyway; count this break as taken.
+            breakTaken()
             state = .suspended(remaining: workInterval, at: now)
-        case .paused, .suspended:
+        case .paused, .suspended, .offHours:
             return
         }
         log.debug("Suspended (sleep/lock)")
@@ -402,6 +599,8 @@ final class BreakScheduler {
     private func resumeFromSuspension() {
         guard case .suspended(let remaining, let at) = state else { return }
         let gap = Date().timeIntervalSince(at)
+        creditAway(gap)
+        defer { applyWorkHours(now: Date()) }
         if gap >= breakDuration {
             log.debug("Woke after \(Int(gap)) s, counting it as a break")
             restartInterval()

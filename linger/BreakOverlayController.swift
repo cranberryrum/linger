@@ -5,6 +5,7 @@ final class BreakOverlayController {
     private let presenter = OverlayPresenter()
     private var presentation: BreakPresentation?
     private var messageIndex = 0
+    private var longMessageIndex = 0
     private var watchdog: Task<Void, Never>?
 
     // However the scheduler got there, a break never outlives its end by more than this.
@@ -33,17 +34,26 @@ final class BreakOverlayController {
     }
 
     private func show(endsAt: Date) {
-        let messages = BreakMessages.current
-        let message = messages[messageIndex % messages.count]
-        messageIndex += 1
+        let isLong = scheduler.currentBreakIsLong
+        let kind: BreakKind = isLong ? .long : .short
+        let messages = BreakMessages.current(kind)
+        let message: String
+        if isLong {
+            message = messages[longMessageIndex % messages.count]
+            longMessageIndex += 1
+        } else {
+            message = messages[messageIndex % messages.count]
+            messageIndex += 1
+        }
 
         let presentation = BreakPresentation(
             message: message,
-            subline: BreakMessages.subline(for: message),
-            startedAt: endsAt.addingTimeInterval(-scheduler.breakDuration),
+            subline: BreakMessages.subline(for: message, kind: kind),
+            startedAt: endsAt.addingTimeInterval(-scheduler.currentBreakDuration),
             endsAt: endsAt,
             skipDifficulty: SkipDifficulty.current,
-            workInterval: scheduler.workInterval
+            workInterval: scheduler.workInterval,
+            isLong: isLong
         )
         self.presentation = presentation
         presenter.present(

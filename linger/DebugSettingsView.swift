@@ -20,6 +20,8 @@ struct DebugSettingsView: View {
                 LabeledContent("Postpones", value: "\(scheduler.postponeCount)/\(BreakScheduler.maxPostpones) · +\(Int(scheduler.postponedTotal / 60)) min")
                 LabeledContent("Last input", value: "\(Int(scheduler.secondsSinceLastInput)) s ago")
                 LabeledContent("Meeting", value: meetingDescription)
+                LabeledContent("Work hours", value: workHoursDescription)
+                LabeledContent("Long breaks", value: longBreaksDescription)
                 LabeledContent("Skip mode", value: SkipDifficulty.current.rawValue)
             }
             .monospacedDigit()
@@ -29,11 +31,18 @@ struct DebugSettingsView: View {
                 Button("Cursor countdown (break in 12 s)") { scheduler.debugSetRemaining(12) }
                 Button("Break due now (typing defers it)") { scheduler.debugSetRemaining(1) }
                 Button("Break now") { scheduler.startBreakNow() }
+                Button("Next break is long") { scheduler.debugForceNextLong() }
+                    .disabled(!scheduler.longBreaksOn)
+                Button("End of work hours (rest until the next start)") { scheduler.debugJumpToEndOfWorkHours() }
+                    .disabled(!scheduler.workHoursOn)
+                Button("Start of work hours (fresh interval)") { scheduler.debugJumpToStartOfWorkHours() }
+                    .disabled(!scheduler.workHoursOn)
             }
 
             Section("Simulate") {
                 Button("Sleep 5 s, wake (resumes where it left off)") { scheduler.debugSimulateSleep(gap: 5) }
                 Button("Sleep 60 s, wake (counts as a break taken)") { scheduler.debugSimulateSleep(gap: 60) }
+                Button("Sleep 5 min, wake (counts as a long break too)") { scheduler.debugSimulateSleep(gap: 5 * 60) }
                 Button("Call for 45 s (break waits, heads-up follows)") { scheduler.debugSimulateMeeting(for: 45) }
                 Button("Postpone 5 min") { scheduler.postpone(by: 5 * 60) }
                     .disabled(!scheduler.canPostpone)
@@ -77,7 +86,23 @@ struct DebugSettingsView: View {
         case .onBreak(let endsAt): "on break, ends \(endsAt.formatted(date: .omitted, time: .standard))"
         case .paused(let until): BreakScheduler.pauseDescription(until: until).lowercased()
         case .suspended(let remaining, _): "suspended, \(Int(remaining)) s left"
+        case .offHours(let until): "off hours, " + (until.map { "until \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "no days selected")
         }
+    }
+
+    private var workHoursDescription: String {
+        guard scheduler.workHoursOn else { return "off" }
+        guard let override = scheduler.scheduleOverride else { return "on, following the schedule" }
+        return "overridden (\(override.working ? "working" : "resting")) until \(override.until.formatted(date: .abbreviated, time: .shortened))"
+    }
+
+    // The only place the counter is ever visible.
+    private var longBreaksDescription: String {
+        guard scheduler.longBreaksOn else { return "off" }
+        let counter = scheduler.longBreaks
+        if counter.forceNextLong { return "next forced long" }
+        let left = max(0, scheduler.longBreakEvery - 1 - counter.completedShort)
+        return "\(counter.completedShort) short done · " + (left == 0 ? "next is long" : "long after \(left) more")
     }
 
     private var meetingDescription: String {

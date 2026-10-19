@@ -7,6 +7,7 @@ struct BreakPresentation {
     let endsAt: Date
     let skipDifficulty: SkipDifficulty
     let workInterval: TimeInterval
+    var isLong = false
 
     var duration: TimeInterval { endsAt.timeIntervalSince(startedAt) }
     var canSkip: Bool { skipDifficulty.canSkip }

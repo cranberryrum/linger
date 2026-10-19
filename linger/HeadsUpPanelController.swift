@@ -231,6 +231,7 @@ final class HeadsUpPanelController {
                 self?.scheduler.startBreakNow()
             },
             onPostpone: { [weak self] amount in self?.postpone(by: amount) },
+            longBreak: scheduler.nextBreakIsLong ? scheduler.longBreakDuration : nil,
             meeting: meeting,
             calendarReadable: MeetingCalendar.shared.canRead,
             onAfterMeeting: { [weak self] in
@@ -267,6 +268,8 @@ private struct HeadsUpView: View {
     let size: NSSize
     let onStartNow: () -> Void
     let onPostpone: (TimeInterval) -> Void
+    // The coming break's length when it's a long one.
+    let longBreak: TimeInterval?
     let meeting: CalendarMeeting?
     let calendarReadable: Bool
     let onAfterMeeting: () -> Void
@@ -327,7 +330,7 @@ private struct HeadsUpView: View {
 
     private var titleRow: some View {
         HStack(spacing: 8) {
-            Text(afterMeeting ? "Next break" : "Break starting in")
+            Text(afterMeeting ? "Next break" : longBreak == nil ? "Break starting in" : "Long break in")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
                 .contentTransition(.opacity)
@@ -348,6 +351,21 @@ private struct HeadsUpView: View {
     }
 
     private var countdown: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            digits
+            if let longBreak, !afterMeeting {
+                Text("\(Int(longBreak / 60)) min · stand up")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(1)
+                    .fixedSize()
+                    .transition(.opacity)
+            }
+        }
+        .animation(Motion.easeOut(0.2), value: afterMeeting)
+    }
+
+    private var digits: some View {
         let seconds = Int(scheduler.remaining.rounded(.up))
         return Group {
             if afterMeeting {

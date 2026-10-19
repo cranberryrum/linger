@@ -127,7 +127,7 @@ final class OverlayPresenter {
 
         if fadeIn {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = Motion.overlayIn
+                context.duration = presentation.isLong ? Motion.longOverlayIn : Motion.overlayIn
                 context.timingFunction = Motion.gentleCurve
                 for window in windows { window.animator().alphaValue = 1 }
             }
