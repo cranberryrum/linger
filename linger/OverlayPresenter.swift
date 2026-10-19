@@ -184,7 +184,8 @@ final class OverlayWindow: NSWindow {
         true
     }
 
-    private static func makeBackdrop(frame: NSRect) -> NSView {
+    // Shared with onboarding, which arrives the same way a break does.
+    static func makeBackdrop(frame: NSRect) -> NSView {
         if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
             let flat = NSView(frame: frame)
             flat.wantsLayer = true

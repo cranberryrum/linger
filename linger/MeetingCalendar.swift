@@ -41,6 +41,8 @@ final class MeetingCalendar {
     }
     private(set) var status: Status = .off
     private(set) var accounts: [Account] = []
+    // True while macOS shows its access prompt; full-screen surfaces step aside for it.
+    private(set) var isRequestingAccess = false
 
     // The email account (an EventKit source) to read; nil until chosen, unless there is only one.
     var accountID: String? {
@@ -120,7 +122,9 @@ final class MeetingCalendar {
             refresh()
             return
         }
+        isRequestingAccess = true
         Task {
+            defer { isRequestingAccess = false }
             do {
                 let granted = try await store.requestFullAccessToEvents()
                 log.debug("Calendar access \(granted ? "granted" : "declined")")

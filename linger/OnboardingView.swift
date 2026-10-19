@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OnboardingView: View {
     @Bindable var scheduler: BreakScheduler
+    let dismissal: OnboardingDismissal
     let onFinish: () -> Void
 
     private enum Step: Int, CaseIterable {
@@ -15,27 +16,33 @@ struct OnboardingView: View {
     @State private var step: Step = .welcome
     @State private var direction: Direction = .forward
     @State private var preview = BreakPreviewController()
+    @State private var appeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let intervalPresets = [15, 20, 30, 45, 60]
     private static let durationPresets = [15, 20, 30, 45, 60]
 
+    // Full screen, like a break: one centred column over the blur. Each page centres in a step area
+    // of fixed height, so the buttons below never jump as pages change.
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 40) {
             ZStack {
                 stepContent
                     .id(step)
                     .transition(stepTransition)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 48)
-            .padding(.top, 36)
+            .frame(width: 560, height: 400)
 
             footer
-                .padding(.horizontal, 24)
-                .padding(.bottom, 20)
+                .frame(width: 560)
+                .entrance(appeared, delay: 0.95, soft: true)
         }
-        .frame(width: 560, height: 420)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The words dissolve before the blur lifts, the way a break ends.
+        .opacity(dismissal.isDismissing ? 0 : 1)
+        .blur(radius: dismissal.isDismissing && !reduceMotion ? 10 : 0)
+        .animation(Motion.gentle(reduceMotion ? 0.15 : 0.35), value: dismissal.isDismissing)
+        .onAppear { appeared = true }
     }
 
     @ViewBuilder
@@ -68,6 +75,7 @@ struct OnboardingView: View {
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
             }
+            .controlSize(.large)
         }
     }
 
@@ -117,7 +125,7 @@ private struct PageDots: View {
         HStack(spacing: 7) {
             ForEach(0..<count, id: \.self) { dot in
                 Capsule()
-                    .fill(dot == index ? Color.accentColor : Color.primary.opacity(0.15))
+                    .fill(.white.opacity(dot == index ? 0.9 : 0.25))
                     .frame(width: dot == index ? 18 : 7, height: 7)
             }
         }
@@ -143,22 +151,24 @@ private struct StepPage<Controls: View>: View {
             if usesLogo || symbol != nil {
                 hero
             }
+            // The same voice as a break: the message, then a quieter sub-line.
             Text(title)
-                .font(.largeTitle.weight(.semibold))
-                .padding(.top, usesLogo || symbol != nil ? 16 : 0)
-                .entrance(shown, delay: 0.05)
-            Text(text)
-                .font(.body)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 44, weight: .medium))
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.top, usesLogo || symbol != nil ? 20 : 0)
+                .entrance(shown, delay: staggered ? 0.45 : 0.05, soft: staggered)
+            Text(text)
+                .font(.system(size: 20))
+                .foregroundStyle(.white.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 520)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 8)
-                .entrance(shown, delay: 0.1)
+                .padding(.top, 12)
+                .entrance(shown, delay: staggered ? 0.6 : 0.1, soft: staggered)
             controls
-                .padding(.top, 24)
-                .entrance(shown, delay: 0.15)
-            Spacer(minLength: 0)
+                .padding(.top, 32)
+                .entrance(shown, delay: staggered ? 0.75 : 0.15, soft: staggered)
         }
         .onAppear { appeared = true }
     }
@@ -176,9 +186,9 @@ private struct StepPage<Controls: View>: View {
                     .font(.system(size: 64))
             }
         }
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(.white.opacity(0.9))
         .frame(height: 76)
-        .entrance(shown, delay: 0)
+        .entrance(shown, delay: staggered ? 0.3 : 0, soft: staggered)
     }
 
     private var shown: Bool { staggered ? appeared : true }
