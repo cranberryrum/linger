@@ -4,6 +4,15 @@
     <title>linger</title>
     <language>en</language>
     <item>
+      <title>linger 1.2</title>
+      <pubDate>Mon, 19 Oct 2026 09:13:36 +0000</pubDate>
+      <sparkle:version>21</sparkle:version>
+      <sparkle:shortVersionString>1.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[Onboarding now arrives the way a break does: the screen frosts over, a soft tone plays, and the welcome sits centred on screen.]]></description>
+      <enclosure url="https://github.com/cranberryrum/linger/releases/download/v1.2/linger-1.2.zip" type="application/octet-stream" sparkle:edSignature="c+CcGcYvebeQ/M7BeF/Q92gABFug4x/VZUAiBJA+caFfiQYpqA3KLzBKARFzVCGZT9KRMKGBLZ6Tnz8SFSyzCQ==" length="1826433" />
+    </item>
+    <item>
       <title>linger 1.1</title>
       <pubDate>Mon, 19 Oct 2026 08:57:33 +0000</pubDate>
       <sparkle:version>17</sparkle:version>
