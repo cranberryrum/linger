@@ -52,12 +52,12 @@ final class BreakScheduler {
     var workInterval: TimeInterval {
         didSet {
             UserDefaults.standard.set(workInterval, forKey: DefaultsKey.workIntervalSec)
-            recomputeNextBreak()
-            // A shorter interval must never blur the screen while the user is still in Settings;
-            // an overdue break gets the normal heads-up lead instead.
-            if nextBreakAt.timeIntervalSinceNow < Self.headsUpLead {
-                cycleStartedAt = Date().addingTimeInterval(Self.headsUpLead - scheduledLength)
-                recomputeNextBreak()
+            // The countdown always reads what the slider says: a new interval starts from now, so the
+            // timer shows the full value instead of what's left after the time already worked.
+            guard workInterval != oldValue else { return }
+            switch state {
+            case .working, .waitingForInputPause: restartInterval()
+            case .onBreak, .paused, .suspended, .offHours: break
             }
         }
     }

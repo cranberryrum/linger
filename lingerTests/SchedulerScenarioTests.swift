@@ -137,4 +137,14 @@ import Testing
             #expect(scheduler.state == .working)
         }
     }
+
+    @Test func timerMatchesTheSliderAfterAChange() {
+        withScheduler { scheduler in
+            scheduler.debugSetRemaining(7 * 60)
+            scheduler.workInterval = 30 * 60
+            #expect(Int(scheduler.remaining.rounded(.up)) == 30 * 60)
+            scheduler.workInterval = 5 * 60
+            #expect(Int(scheduler.remaining.rounded(.up)) == 5 * 60)
+        }
+    }
 }
