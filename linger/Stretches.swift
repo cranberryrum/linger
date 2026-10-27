@@ -49,10 +49,10 @@ enum StretchMove: String, CaseIterable, Codable, Identifiable {
     var poses: (StretchPose, StretchPose) {
         switch self {
         case .chinTuck: (.neutral, StretchPose(headDX: -9))
-        case .nod: (.neutral, StretchPose(headTilt: 28))
+        case .nod: (.neutral, StretchPose(headTilt: 22))
         case .sideTilt: (StretchPose(headTilt: -22), StretchPose(headTilt: 22))
         case .lookOver: (StretchPose(headTurn: -1), StretchPose(headTurn: 1))
-        case .shoulderRolls: (.neutral, StretchPose(shoulderLift: 10))
+        case .shoulderRolls: (.neutral, StretchPose(shoulderLift: 8))
         case .bladeSqueeze: (.neutral, StretchPose(shoulderLift: -2, shoulderInset: 1))
         }
     }
