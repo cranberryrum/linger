@@ -12,6 +12,8 @@ enum Sound: CaseIterable {
     case skip
     /// The break ran its course: the same chord, quick and rising, with a bright top note.
     case breakEnd
+    /// Next stretch: one soft mid note, so the switch is heard without looking back.
+    case stretchSwitch
 }
 
 enum Sounds {
@@ -116,6 +118,12 @@ private final class SoundEngine {
                 .init(frequency: e4, start: 0.1, attack: 0.12, hold: 0.3, release: 1.7, gain: 0.7),
                 .init(frequency: a4, start: 0.2, attack: 0.12, hold: 0.3, release: 1.8, gain: 0.6),
                 .init(frequency: e5, start: 0.32, attack: 0.15, hold: 0.25, release: 2.0, gain: 0.35),
+            ])
+
+        case .stretchSwitch:
+            return Instrument.Recipe(peak: 0.3, partials: [
+                .init(frequency: e4, start: 0, attack: 0.05, hold: 0.15, release: 1.2, gain: 1),
+                .init(frequency: a4, start: 0, attack: 0.05, hold: 0.1, release: 0.9, gain: 0.3),
             ])
         }
     }

@@ -46,14 +46,16 @@ final class BreakOverlayController {
             messageIndex += 1
         }
 
+        let subline = BreakMessages.subline(for: message, kind: kind)
         let presentation = BreakPresentation(
             message: message,
-            subline: BreakMessages.subline(for: message, kind: kind),
+            subline: subline,
             startedAt: endsAt.addingTimeInterval(-scheduler.currentBreakDuration),
             endsAt: endsAt,
             skipDifficulty: SkipDifficulty.current,
             workInterval: scheduler.workInterval,
-            isLong: isLong
+            isLong: isLong,
+            steps: isLong ? Self.stretchSteps(duration: scheduler.currentBreakDuration, opening: (message, subline)) : []
         )
         self.presentation = presentation
         presenter.present(
@@ -70,6 +72,14 @@ final class BreakOverlayController {
             // If the scheduler had already moved on without telling us, lift the blur regardless.
             if self.presentation != nil { self.hide() }
         }
+    }
+
+    private static func stretchSteps(duration: TimeInterval, opening: (title: String, subline: String)) -> [StretchStep] {
+        let moves = Stretches.enabledMoves
+        guard Stretches.isOn, !moves.isEmpty else { return [] }
+        let planned = Stretches.plan(duration: duration, opening: opening, moves: moves)
+        let rotation = Stretches.consumeRotation(count: planned.filter { $0.move != nil }.count)
+        return Stretches.plan(duration: duration, opening: opening, moves: moves, rotation: rotation)
     }
 
     private func hide() {

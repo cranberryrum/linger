@@ -6,19 +6,26 @@ final class BreakPreviewController {
     private var finishTask: Task<Void, Never>?
     private var completion: (() -> Void)?
 
-    func present(duration: TimeInterval, completion: @escaping () -> Void) {
+    func present(duration: TimeInterval, kind: BreakKind = .short, completion: @escaping () -> Void) {
         guard !presenter.isPresenting else { return }
         self.completion = completion
 
         let startedAt = Date()
-        let message = BreakMessages.current.first ?? "Look far away"
+        let message = BreakMessages.current(kind).first ?? "Look far away"
+        let subline = BreakMessages.subline(for: message, kind: kind)
+        // The long preview is a whole guided break squeezed into a few seconds per move.
+        let steps = kind == .long && Stretches.isOn && !Stretches.enabledMoves.isEmpty
+            ? Stretches.plan(duration: duration, opening: (message, subline))
+            : []
         let presentation = BreakPresentation(
             message: message,
-            subline: BreakMessages.subline(for: message),
+            subline: subline,
             startedAt: startedAt,
             endsAt: startedAt.addingTimeInterval(duration),
             skipDifficulty: SkipDifficulty.current,
-            workInterval: UserDefaults.standard.double(forKey: DefaultsKey.workIntervalSec)
+            workInterval: UserDefaults.standard.double(forKey: DefaultsKey.workIntervalSec),
+            isLong: kind == .long,
+            steps: steps
         )
 
         presenter.present(
