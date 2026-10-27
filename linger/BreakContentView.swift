@@ -8,6 +8,8 @@ struct BreakPresentation {
     let skipDifficulty: SkipDifficulty
     let workInterval: TimeInterval
     var isLong = false
+    // A guided long break: the message, a few moves, then eyes far away. Empty for a plain break.
+    var steps: [StretchStep] = []
 
     var duration: TimeInterval { endsAt.timeIntervalSince(startedAt) }
     var canSkip: Bool { skipDifficulty.canSkip }
@@ -20,31 +22,49 @@ struct BreakContentView: View {
 
     @State private var appeared = false
     @State private var settled = false
+    @State private var stepID = 0
 
     var body: some View {
         // One tick per second, aligned to the break's start; the ring tweens between ticks, so the
         // full-screen content is not re-evaluated at frame rate for the whole break.
         TimelineView(.periodic(from: presentation.startedAt, by: 1)) { context in
             let remaining = max(0, presentation.endsAt.timeIntervalSince(context.date))
+            let elapsed = context.date.timeIntervalSince(presentation.startedAt)
+            let step = Stretches.step(at: elapsed, in: presentation.steps)
+            // A guided break wakes the text for each new move, then lets it recede again.
+            let stepSettled = step.map { elapsed - $0.start >= Motion.overlaySettle } ?? settled
 
             let exiting = input.isEmergencyExit
-            let dimmed = settled && !exiting
+            let dimmed = (step == nil ? settled : stepSettled) && !exiting
 
             ZStack {
                 VStack(spacing: 0) {
-                    Text(exiting ? "Okay, ending this break" : presentation.message)
+                    Text(exiting ? "Okay, ending this break" : step?.title ?? presentation.message)
                         .font(.system(size: 44, weight: .medium))
                         .foregroundStyle(.white.opacity(0.9))
                         .opacity(dimmed ? 0.4 : 1)
                         .contentTransition(.opacity)
                         .entrance(appeared, delay: 0.45, soft: true)
-                    Text(exiting ? "Next one in \(Int(presentation.workInterval / 60)) min" : presentation.subline)
+                    Text(exiting ? "Next one in \(Int(presentation.workInterval / 60)) min" : step?.subline ?? presentation.subline)
                         .font(.system(size: 20))
                         .foregroundStyle(.white.opacity(0.6))
                         .opacity(dimmed ? 0.4 : 1)
                         .contentTransition(.opacity)
                         .padding(.top, 12)
                         .entrance(appeared, delay: 0.6, soft: true)
+                    // The figure's slot stays for the whole guided break, so the text never jumps.
+                    if !presentation.steps.isEmpty, !exiting {
+                        ZStack {
+                            if let step, let move = step.move {
+                                StretchFigure(move: move, startedAt: presentation.startedAt.addingTimeInterval(step.start), animating: !stepSettled)
+                                    .opacity(dimmed ? 0.3 : 1)
+                                    .transition(.opacity)
+                                    .id(step.id)
+                            }
+                        }
+                        .frame(height: StretchFigure.size)
+                        .padding(.top, 32)
+                    }
                     ring(remaining: remaining)
                         .opacity(exiting ? 0 : 1)
                         .padding(.top, 48)
@@ -53,7 +73,14 @@ struct BreakContentView: View {
                 .animation(Motion.gentle(Motion.reduceMotion ? 0 : 0.4), value: exiting)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 600)
-                .animation(Motion.gentle(Motion.reduceMotion ? 0 : 1.4), value: settled)
+                .animation(Motion.gentle(Motion.reduceMotion ? 0 : 1.4), value: dimmed)
+                .animation(Motion.gentle(Motion.reduceMotion ? 0.15 : 0.9), value: step?.id)
+                .onChange(of: step?.id) { _, id in
+                    // The tone marks the switch to each move, so there is no need to look back for it.
+                    guard let id, id != stepID else { return }
+                    stepID = id
+                    if id > 0, step?.move != nil { Sounds.play(.stretchSwitch) }
+                }
 
                 if presentation.canSkip {
                     VStack {

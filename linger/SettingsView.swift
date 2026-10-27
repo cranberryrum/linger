@@ -200,6 +200,10 @@ private struct WorkHoursSection: View {
 
 private struct LongBreaksSection: View {
     @Bindable var scheduler: BreakScheduler
+    @AppStorage(DefaultsKey.stretchesOn) private var stretchesOn = true
+    @AppStorage(DefaultsKey.stretchesOff) private var stretchesOff = ""
+    @State private var preview = BreakPreviewController()
+    @State private var isPreviewing = false
 
     private static let everyOptions = [2, 3, 4, 6]
     private static let durationOptions = [2, 3, 5]
@@ -220,6 +224,33 @@ private struct LongBreaksSection: View {
                 }
             }
         }
+
+        if scheduler.longBreaksOn {
+            Section {
+                Toggle("Guide neck and shoulder stretches", isOn: $stretchesOn)
+                if stretchesOn {
+                    ForEach(StretchMove.allCases) { move in
+                        Toggle(move.title, isOn: moveEnabled(move))
+                            .padding(.leading, 20)
+                    }
+                    Button(isPreviewing ? "Previewing…" : "Preview a long break") {
+                        guard !isPreviewing else { return }
+                        isPreviewing = true
+                        preview.present(duration: 40, kind: .long) { isPreviewing = false }
+                    }
+                    .disabled(isPreviewing)
+                }
+            } footer: {
+                Text("Each move is shown once, then a soft tone marks the next. Gentle moves only; stop if anything hurts.")
+            }
+        }
+    }
+
+    private func moveEnabled(_ move: StretchMove) -> Binding<Bool> {
+        Binding(
+            get: { Stretches.enabledMoves(off: stretchesOff).contains(move) },
+            set: { Stretches.setEnabled($0, move) }
+        )
     }
 
     private var durationMinutes: Binding<Int> {

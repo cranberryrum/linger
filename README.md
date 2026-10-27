@@ -16,7 +16,8 @@ Every ~20 minutes the screen frosts over, a short line appears ("Look far away")
 - **Three skip modes** — *Anytime*, *Hold to skip* (hold the button or Esc for one second), or *Never*.
 - **Menu bar control** — time to next break, take a break now, postpone, pause for an hour / until tomorrow, and a Settings window with a live countdown card and preset sliders.
 - **Global shortcut** — ⌃⌥⌘L starts a break from anywhere.
-- **Quiet updates** — new versions download in the background and install the next time you've stepped away from the Mac; until then the only trace is the menu item reading *Install Update and Relaunch*.
+- **Guided stretches** — during a long break, a line figure shows one gentle neck or shoulder move, then fades; a soft tone marks each next move, so you do them looking anywhere but the screen. Every long break ends with eyes far away.
+- **Quiet updates — new versions download in the background and install the next time you've stepped away from the Mac; until then the only trace is the menu item reading *Install Update and Relaunch*.
 - **Soft sounds** — four synthesised tones (before, start, skip, end) from one instrument, all optional.
 
 ## Zero permissions
@@ -64,6 +65,7 @@ Settings → **Debug** shows the scheduler's live state and jumps straight to an
 | `BreakScheduler.swift` | The state machine: working → heads-up → break → working, with postpones, idle reset, sleep/lock handling, work hours and long breaks |
 | `WorkHours.swift` | The work-hours schedule as a pure value type: is now working, when does it next start or end |
 | `LongBreakCounter.swift` | Which break is the long one; internal, never shown |
+| `Stretches.swift`, `StretchFigure.swift` | The guided moves, how a long break is laid out, and the line figure that shows each one |
 | `OverlayPresenter.swift` | One borderless `NSVisualEffectView` window per screen, fades, Esc handling |
 | `BreakContentView.swift` | Message, countdown ring and skip / hold-to-skip controls |
 | `HeadsUpPanelController.swift` | The 60 s card: postpone pills, swipe-to-dismiss, hover behaviour |

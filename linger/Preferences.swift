@@ -62,6 +62,9 @@ enum DefaultsKey {
     static let longBreakEvery = "longBreakEvery"
     static let longBreakDurationSec = "longBreakDurationSec"
     static let longBreakMessages = "longBreakMessages"
+    static let stretchesOn = "stretchesOn"
+    static let stretchesOff = "stretchesOff"
+    static let stretchRotation = "stretchRotation"
     static let hasCompletedOnboarding = "hasCompletedOnboarding"
 
     private static let legacyShowCountdownInMenuBar = "showCountdownInMenuBar"
@@ -82,6 +85,7 @@ enum DefaultsKey {
             longBreaksOn: false,
             longBreakEvery: 3,
             longBreakDurationSec: 3 * 60,
+            stretchesOn: true,
             hasCompletedOnboarding: false,
         ])
         migrate()
